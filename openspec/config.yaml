@@ -1,0 +1,34 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+context: |
+  文档语言：所有项目文档、OpenSpec artifacts、Superpowers specs 和研发任务说明默认使用中文编写。
+  保持代码标识、命令、JSON 字段名、错误码、数据库字段、文件路径、OpenSpec 规范关键字（如 SHALL/MUST/WHEN/THEN）为原文，避免破坏协议和校验。
+  面向 Hermes agent 的知识导入工具：Python CLI，JSON stdin/stdout，LangChain Deep Agents skills + 受控 Python tools，SQLite 索引，Obsidian 笔记写入，外部素材仓库。
+  Python 项目管理：使用 uv 管理依赖、uv.lock、命令运行和项目虚拟环境；.venv/ 是本地生成的 uv 项目环境，不提交。
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - 使用中文描述背景、变更和影响。
+  design:
+    - 使用中文解释架构、取舍、风险和开放问题。
+  specs:
+    - 使用中文描述需求和场景；保留 SHALL/MUST/WHEN/THEN 等规范关键字。
+  tasks:
+    - 使用中文编写任务说明；保持 `- [ ]` checkbox 格式和编号格式。

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
+
+[project]
+name = "nooliigee-km"
+version = "0.1.0"
+description = "面向 Hermes agent 的知识导入 CLI 契约骨架"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "curl-cffi>=0.15.0",
+    "httpx>=0.28.1",
+    "secretstorage>=3.5.0",
+    "trafilatura>=2.1.0",
+    "yt-dlp",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "librosa>=0.10",
+    "optimum[openvino]>=1.14",
+    "soundfile>=0.12",
+]
+
+[project.scripts]
+km = "km.__main__:main"
+
+[tool.uv.build-backend]
+module-name = "km"
+module-root = ""
