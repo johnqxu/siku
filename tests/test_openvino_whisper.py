@@ -73,11 +73,12 @@ class OpenVinoWhisperTranscriberTests(unittest.TestCase):
         fake_model_class.from_pretrained.assert_called_once_with(
             "openai/whisper-small",
             export=True,
-            compile=True,
+            compile=False,
             device="GPU",
             ov_config={"PERFORMANCE_HINT": "LATENCY"},
         )
         fake_model.save_pretrained.assert_called_once_with("/project/models/whisper/small")
+        fake_model.compile.assert_called_once()
 
     def test_missing_openvino_stack_maps_to_whisper_unavailable(self):
         transcriber = OpenVinoWhisperTranscriber(model_dir="/models/whisper")

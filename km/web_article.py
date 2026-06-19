@@ -68,8 +68,8 @@ class HttpWebArticleFetcher:
                 follow_redirects=True,
                 headers={
                     "User-Agent": (
-                        "Mozilla/5.0 (compatible; nooliigee-km/0.1; "
-                        "+https://example.invalid/nooliigee)"
+                        "Mozilla/5.0 (compatible; siku-km/0.1; "
+                        "+https://example.invalid/siku)"
                     )
                 },
             )

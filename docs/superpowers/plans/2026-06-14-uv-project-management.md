@@ -54,7 +54,7 @@ module-root = ""
 Run:
 
 ```bash
-UV_CACHE_DIR=/home/xu/workspace/nooliigee/.uv-cache uv lock
+UV_CACHE_DIR=/home/xu/workspace/siku/.uv-cache uv lock
 ```
 
 Expected: creates or updates `uv.lock` without changing application code.
@@ -92,7 +92,7 @@ Document that `uv` manages dependencies, `uv.lock`, command execution, and `.ven
 Run:
 
 ```bash
-UV_CACHE_DIR=/home/xu/workspace/nooliigee/.uv-cache uv sync
+UV_CACHE_DIR=/home/xu/workspace/siku/.uv-cache uv sync
 ```
 
 Expected: `uv` creates or updates `.venv/` and installs the project.
@@ -102,7 +102,7 @@ Expected: `uv` creates or updates `.venv/` and installs the project.
 Run:
 
 ```bash
-UV_CACHE_DIR=/home/xu/workspace/nooliigee/.uv-cache uv run python -m unittest discover -s tests -v
+UV_CACHE_DIR=/home/xu/workspace/siku/.uv-cache uv run python -m unittest discover -s tests -v
 ```
 
 Expected: all CLI contract tests pass.
@@ -113,7 +113,7 @@ Run:
 
 ```bash
 printf '' > /tmp/km-empty-config.toml
-printf '{"url":"https://example.com"}' | UV_CACHE_DIR=/home/xu/workspace/nooliigee/.uv-cache KM_CONFIG=/tmp/km-empty-config.toml uv run km ingest
+printf '{"url":"https://example.com"}' | UV_CACHE_DIR=/home/xu/workspace/siku/.uv-cache KM_CONFIG=/tmp/km-empty-config.toml uv run km ingest
 ```
 
 Expected: stdout is a single JSON object with `error_code` equal to `NOT_IMPLEMENTED`.

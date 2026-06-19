@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 from .errors import whisper_unavailable
@@ -46,7 +47,7 @@ class OpenVinoWhisperTranscriber:
             audio = self._load_audio(str(audio_path))
             text = self._transcribe_audio(audio, model, processor)
         except Exception as exc:
-            raise whisper_unavailable("OpenVINO Whisper GPU 转写不可用。") from exc
+            raise whisper_unavailable(f"OpenVINO Whisper GPU 转写不可用: {exc}") from exc
         if not isinstance(text, str) or not text.strip():
             raise whisper_unavailable("OpenVINO Whisper GPU 未返回有效转写文本。")
         return TranscriptionResult(text=text)
@@ -72,15 +73,36 @@ class OpenVinoWhisperTranscriber:
                 ov_config={"PERFORMANCE_HINT": "LATENCY"},
             )
         else:
+            # Phase 1: export PyTorch -> OpenVINO IR without device compilation
             model = model_class.from_pretrained(
                 model_id,
                 export=True,
-                compile=True,
+                compile=False,
                 device=self.device,
                 ov_config={"PERFORMANCE_HINT": "LATENCY"},
             )
+            # Save IR immediately — persists even if GPU compilation fails
             self._mkdir(local_path)
             model.save_pretrained(str(local_path))
+
+            # Phase 2: compile for target device
+            try:
+                model.compile()
+            except Exception as exc:
+                print(
+                    f"km: Warning: Failed to compile Whisper model for {self.device}: {exc}",
+                    file=sys.stderr,
+                )
+                print(
+                    f"km: The OpenVINO IR has been saved to {local_path}. "
+                    "Re-running will use the cached model.",
+                    file=sys.stderr,
+                )
+                raise whisper_unavailable(
+                    f"OpenVINO Whisper GPU compile failed for device '{self.device}': {exc}"
+                ) from exc
+
+        print(f"km: Whisper model loaded on {model._device}", file=sys.stderr)
 
         self._model = model
         self._processor = processor

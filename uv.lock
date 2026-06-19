@@ -1098,7 +1098,7 @@ wheels = [
 ]
 
 [[package]]
-name = "nooliigee-km"
+name = "siku-km"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
