@@ -4,7 +4,7 @@
 定义 Bilibili 视频从元数据、字幕、音频下载到本地 OpenVINO GenAI Whisper 转写，并产出规范 transcript 的文本化闭环。
 ## Requirements
 ### Requirement: Bilibili transcript pipeline 入口
-系统 SHALL 为 `bilibili_video` 来源提供 Bilibili 视频到规范文本的处理 pipeline，并在规范文本生成后由当前 Python 确定性 pipeline 继续执行领域分类和中文总结。
+系统 SHALL 为 `bilibili_video` 来源提供 Bilibili 视频到规范文本的处理 pipeline，并在规范文本生成后由当前 Python 确定性 pipeline 继续执行领域分类、中文总结和 Obsidian processed pipeline。
 
 #### Scenario: Bilibili 视频进入 transcript pipeline
 - **WHEN** `km ingest` 请求通过本地状态层和 URL 路由，且路由结果为 `bilibili_video`
@@ -16,12 +16,15 @@
 
 #### Scenario: 领域分类成功后进入中文总结
 - **WHEN** Bilibili transcript pipeline 和领域分类 pipeline 均成功
-- **THEN** 系统继续执行中文总结 pipeline，并在成功时返回 `summary_ready`
+- **THEN** 系统继续执行中文总结 pipeline
 
-#### Scenario: pipeline 不执行更后续知识处理
+#### Scenario: 总结成功后进入 Obsidian processed pipeline
 - **WHEN** Bilibili transcript pipeline、领域分类 pipeline 和中文总结 pipeline 均成功
-- **THEN** 系统 MUST NOT 执行 Obsidian 写入、SQLite `processed` 记录写入或 Deep Agents 端到端编排
+- **THEN** 系统继续执行 Obsidian note pipeline，并在成功时返回 `processed_ready`
 
+#### Scenario: pipeline 不执行 Deep Agents 编排
+- **WHEN** Bilibili transcript pipeline、领域分类 pipeline、中文总结 pipeline 和 Obsidian note pipeline 均成功
+- **THEN** 系统 MUST NOT 启用 Deep Agents 端到端编排
 ### Requirement: Bilibili 元数据采集
 系统 SHALL 下载并保存 Bilibili 视频元数据。
 
@@ -32,7 +35,6 @@
 #### Scenario: 元数据失败返回结构化错误
 - **WHEN** Bilibili 元数据采集失败
 - **THEN** 系统返回 `ok: false` 且 `error_code: "BILIBILI_METADATA_FAILED"`
-
 ### Requirement: 字幕优先策略
 系统 SHALL 优先使用 Bilibili 可用字幕生成规范 transcript。
 
@@ -43,7 +45,6 @@
 #### Scenario: 字幕被规范化为 Markdown transcript
 - **WHEN** 系统从字幕生成规范文本
 - **THEN** `canonical/transcript.md` 是 UTF-8 Markdown 文件，并包含可供后续分类和总结使用的正文文本
-
 ### Requirement: 无字幕时音频与 Whisper fallback
 系统 SHALL 在没有可用字幕时下载音频并使用本地 OpenVINO GenAI Whisper 转写。
 
@@ -70,7 +71,6 @@
 #### Scenario: Whisper 转写失败返回结构化错误
 - **WHEN** 本地 Whisper 已可用但转写过程失败
 - **THEN** 系统返回 `ok: false` 且 `error_code: "BILIBILI_TRANSCRIPT_FAILED"`
-
 ### Requirement: 规范 transcript 与 asset manifest
 系统 SHALL 为 Bilibili transcript pipeline 产出规范文本和素材清单。
 
@@ -85,7 +85,6 @@
 #### Scenario: asset_manifest 记录音频和转写素材
 - **WHEN** pipeline 使用 Whisper fallback 成功
 - **THEN** `asset_manifest` 记录元数据文件、音频文件和 `canonical/transcript.md`
-
 ### Requirement: 受控 tool 边界
 系统 SHALL 通过受控 Python tools 执行 Bilibili 下载、音频下载、Whisper 转写和规范文本写入。
 
@@ -96,7 +95,6 @@
 #### Scenario: skills 不直接执行副作用
 - **WHEN** 阅读 `skills/bilibili-ingest/SKILL.md` 或 `skills/whisper-transcription/SKILL.md`
 - **THEN** skill 文件 MUST 指示 agent 使用受控 Python tools，而不是自行执行 shell、访问网络或写入素材仓库
-
 ### Requirement: 测试替身与可选集成测试
 系统 SHALL 使用测试替身验证 Bilibili transcript pipeline 的核心行为，并将真实网络和真实 Whisper 作为可选集成测试。
 
@@ -111,4 +109,3 @@
 #### Scenario: 单元测试覆盖 GPU 设备选择
 - **WHEN** 单元测试运行
 - **THEN** 它验证 OpenVINO Whisper transcriber 默认请求 `GPU` 或等价的 `GPU.0`
-

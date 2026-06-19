@@ -4,7 +4,7 @@
 TBD - created by archiving change add-summary-generation-pipeline. Update Purpose after archive.
 ## Requirements
 ### Requirement: 中文总结 pipeline 入口
-系统 SHALL 为已完成领域分类的新来源执行中文总结 pipeline。
+系统 SHALL 为已完成领域分类的新来源执行中文总结 pipeline，并在中文总结成功后继续执行 Obsidian processed pipeline。
 
 #### Scenario: Bilibili domain 后进入总结
 - **WHEN** `km ingest` 请求路由为 `bilibili_video`，Bilibili transcript pipeline 成功生成 `canonical/transcript.md`，且领域分类 pipeline 成功生成 `summary/domain.json`
@@ -14,10 +14,13 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 - **WHEN** `km ingest` 请求路由为 `web_article`，网页文章 content pipeline 成功生成 `canonical/content.md`，且领域分类 pipeline 成功生成 `summary/domain.json`
 - **THEN** 系统继续执行中文总结 pipeline，而不是停在 `domain_ready`
 
-#### Scenario: pipeline 不执行后续入库处理
+#### Scenario: 总结成功后进入 Obsidian processed pipeline
 - **WHEN** 中文总结 pipeline 产出 `summary/summary.json`
-- **THEN** 系统 MUST NOT 写 Obsidian、写 SQLite `processed` 记录或启用 Deep Agents 端到端编排
+- **THEN** 系统继续执行 Obsidian note pipeline，并在成功时返回 `processed_ready`
 
+#### Scenario: pipeline 不执行 Deep Agents 编排
+- **WHEN** 中文总结 pipeline 和 Obsidian note pipeline 均成功
+- **THEN** 系统 MUST NOT 启用 Deep Agents 端到端编排
 ### Requirement: summary schema
 系统 SHALL 使用固定 schema 版本 1 写入结构化中文总结。
 
@@ -44,7 +47,6 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: prompt 字段记录 prompt 元数据
 - **WHEN** `summary/summary.json` 被写入
 - **THEN** `prompt` 包含 `prompt_id` 和 `domain`，且 MUST NOT 嵌入完整 prompt 文本
-
 ### Requirement: 领域专属 domain_notes
 系统 SHALL 按主领域要求 `domain_notes` 包含固定字段表。
 
@@ -95,7 +97,6 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: 原文未说明字段
 - **WHEN** 原文没有提供某个 `domain_notes` 字段的信息
 - **THEN** 模型 SHALL 输出字符串 `原文未明确说明`
-
 ### Requirement: prompt 资产与版本
 系统 SHALL 使用项目内 prompt 资产生成中文总结请求。
 
@@ -114,7 +115,6 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: prompt_id 使用稳定版本
 - **WHEN** 系统选择总结 prompt
 - **THEN** `prompt_id` 使用 `summary.<domain_key>.v1` 格式
-
 ### Requirement: 单次总结输入策略
 系统 SHALL 对完整规范文本执行单次总结。
 
@@ -129,7 +129,6 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: 上下文超限返回公开错误
 - **WHEN** 模型或 API 明确返回上下文超限
 - **THEN** 系统返回 `ok: false` 且 `error_code: "SUMMARY_INPUT_TOO_LARGE"`
-
 ### Requirement: summary schema 校验
 系统 SHALL 严格校验模型返回的总结 JSON。
 
@@ -164,7 +163,6 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: 数组数量不做硬限制
 - **WHEN** `key_concepts`、`core_points`、`actionable_insights` 或 `questions` 的数量低于 prompt 建议值
 - **THEN** 只要字段类型和元素结构合法，系统接受该结果
-
 ### Requirement: 评测模式
 系统 SHALL 支持配置驱动的候选模型并发总结。
 
@@ -203,7 +201,6 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: 评测不生成系统化评估
 - **WHEN** 评测模式启用
 - **THEN** 系统 MUST NOT 生成评分、排序、manifest、UI 或人工选择记录
-
 ### Requirement: summary 产物写入
 系统 SHALL 使用原子写入方式保存总结产物。
 
@@ -222,26 +219,28 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 #### Scenario: 重复运行重新生成 summary
 - **WHEN** 同一来源在未写 SQLite `processed` 前再次运行到中文总结阶段
 - **THEN** 系统重新生成并在成功校验后覆盖正式总结产物
-
 ### Requirement: summary_ready 响应
-系统 SHALL 在中文总结成功后返回阶段性成功响应 `summary_ready`。
+系统 SHALL 保留中文总结成功响应 builder 作为内部阶段结果，但 `km ingest` 端到端成功路径 SHALL 在 Obsidian processed pipeline 成功后返回 `processed_ready`。
 
-#### Scenario: summary_ready 成功响应
+#### Scenario: summary_ready 成功响应 builder
 - **WHEN** 中文总结 pipeline 成功写入 `summary/summary.json`
-- **THEN** stdout JSON 包含 `ok: true`、`status: "summary_ready"`、`content_type`、`source_url`、`asset_dir`、`canonical_text_path`、`domain_path`、`summary_path`、`domain`、`title`、`summary_model_ref` 和 `evaluation_enabled`
+- **THEN** 内部响应 builder 可生成包含 `ok: true`、`status: "summary_ready"`、`content_type`、`source_url`、`asset_dir`、`canonical_text_path`、`domain_path`、`summary_path`、`domain`、`title`、`summary_model_ref` 和 `evaluation_enabled` 的阶段性响应
 
-#### Scenario: 评测响应包含 evaluation_dir
+#### Scenario: 评测响应 builder 包含 evaluation_dir
 - **WHEN** 评测模式启用且中文总结成功
-- **THEN** stdout JSON 包含 `evaluation_dir`
+- **THEN** 内部 `summary_ready` 响应 builder 可包含 `evaluation_dir`
+
+#### Scenario: km ingest 不停在 summary_ready
+- **WHEN** `km ingest` 文本化、领域分类、中文总结和 Obsidian note pipeline 均成功
+- **THEN** stdout JSON 返回 `processed_ready`，而不是 `summary_ready`
 
 #### Scenario: summary_ready 不输出总结正文
-- **WHEN** 系统返回 `summary_ready`
-- **THEN** stdout MUST NOT 嵌入 `summary/summary.json` 的正文内容
+- **WHEN** 内部系统生成 `summary_ready`
+- **THEN** 该响应 MUST NOT 嵌入 `summary/summary.json` 的正文内容
 
 #### Scenario: summary_ready 不表示完整知识笔记完成
-- **WHEN** 系统返回 `summary_ready`
+- **WHEN** 内部系统生成 `summary_ready`
 - **THEN** 该响应只表示中文总结完成，不表示 Obsidian 笔记或 SQLite `processed` 记录已经完成
-
 ### Requirement: summary generation skill 资产
 系统 SHALL 维护项目内中文总结 skill 文件，供未来 Hermes/Deep Agents 编排复用。
 
@@ -251,8 +250,7 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 
 #### Scenario: skill 不直接执行副作用
 - **WHEN** 阅读 `skills/summary-generation/SKILL.md`
-- **THEN** skill 文件 MUST 指示 agent 不直接调用 LLM、不直接写 Obsidian、不写 SQLite `processed` 记录、不做评测评分或排序、不启用 Deep Agents 运行时编排
-
+- **THEN** skill 文件 MUST 指示 agent 不直接调用 LLM、不直接写 Obsidian、不写 SQLite `processed` 记录、不做评测评分或排序、不启用 Deep Agents 运行时编排；Obsidian 写入必须交给 `obsidian-write` skill 对应的受控 tools
 ### Requirement: summary 测试替身
 系统 SHALL 使用测试替身验证中文总结 pipeline，不依赖真实 LLM 网络调用。
 
@@ -262,9 +260,8 @@ TBD - created by archiving change add-summary-generation-pipeline. Update Purpos
 
 #### Scenario: 单元测试覆盖成功路径
 - **WHEN** 单元测试运行
-- **THEN** 它验证 Bilibili 和网页文本化加领域分类成功后继续返回 `summary_ready`，并写入 `summary/summary.json`
+- **THEN** 它验证 Bilibili 和网页文本化加领域分类成功后继续写入 `summary/summary.json`，并由端到端 CLI 继续返回 `processed_ready`
 
 #### Scenario: 单元测试覆盖失败路径
 - **WHEN** 单元测试运行
 - **THEN** 它验证 `SUMMARY_INPUT_INVALID`、`SUMMARY_INPUT_TOO_LARGE`、`SUMMARY_SCHEMA_INVALID` 和 `LLM_REQUEST_FAILED`
-

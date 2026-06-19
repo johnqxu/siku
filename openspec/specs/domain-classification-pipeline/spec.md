@@ -4,7 +4,7 @@
 定义规范文本生成后的领域分类能力，包括固定领域表、集中式 LLM 模型引用、受控分类调用、分类结果校验、`summary/domain.json` 产物和 `domain_ready` 阶段性响应。
 ## Requirements
 ### Requirement: 领域分类 pipeline 入口
-系统 SHALL 为已生成规范文本的新来源执行领域分类 pipeline，并在领域分类成功后继续执行中文总结 pipeline。
+系统 SHALL 为已生成规范文本的新来源执行领域分类 pipeline，并在领域分类成功后继续执行中文总结和 Obsidian processed pipeline。
 
 #### Scenario: Bilibili transcript 后进入领域分类
 - **WHEN** `km ingest` 请求路由为 `bilibili_video`，且 Bilibili transcript pipeline 成功生成 `canonical/transcript.md`
@@ -16,12 +16,15 @@
 
 #### Scenario: 领域分类成功后进入中文总结
 - **WHEN** 领域分类 pipeline 产出 `summary/domain.json`
-- **THEN** 系统继续执行中文总结 pipeline，并在成功时返回 `summary_ready`
+- **THEN** 系统继续执行中文总结 pipeline
 
-#### Scenario: pipeline 不执行更后续知识处理
+#### Scenario: 总结成功后进入 Obsidian processed pipeline
 - **WHEN** 领域分类 pipeline 和中文总结 pipeline 均成功
-- **THEN** 系统 MUST NOT 执行 Obsidian 写入、SQLite `processed` 记录写入或 Deep Agents 端到端编排
+- **THEN** 系统继续执行 Obsidian note pipeline，并在成功时返回 `processed_ready`
 
+#### Scenario: pipeline 不执行 Deep Agents 编排
+- **WHEN** 领域分类 pipeline、中文总结 pipeline 和 Obsidian note pipeline 均成功
+- **THEN** 系统 MUST NOT 启用 Deep Agents 端到端编排
 ### Requirement: 固定领域表
 系统 SHALL 使用版本化固定领域表执行单一主领域分类。
 
@@ -40,7 +43,6 @@
 #### Scenario: 低置信度归入其他
 - **WHEN** 内容跨领域、证据不足或模型无法明确判断主领域
 - **THEN** 分类结果 SHALL 使用 `domain: "其他"`，并在 `reason` 中说明原因
-
 ### Requirement: LLM 模型定义与任务引用
 系统 SHALL 支持集中式 LLM 模型定义，并由领域分类任务引用具体模型。
 
@@ -63,7 +65,6 @@
 #### Scenario: 首版只支持 OpenAI-compatible provider
 - **WHEN** 被引用模型的 `provider` 不是 `openai_compatible`
 - **THEN** 系统返回 `ok: false` 且 `error_code: "CONFIG_INVALID"`
-
 ### Requirement: 受控 LLM 分类调用
 系统 SHALL 通过受控 Python tool 调用远程 LLM 执行领域分类。
 
@@ -86,7 +87,6 @@
 #### Scenario: 不接入 Deep Agents 运行时
 - **WHEN** 领域分类 pipeline 执行
 - **THEN** 系统 MUST NOT 创建 LangChain Deep Agent 或让 agent 编排分类步骤
-
 ### Requirement: 分类 schema 校验
 系统 SHALL 校验 LLM 返回的领域分类结果。
 
@@ -109,7 +109,6 @@
 #### Scenario: 置信度非法返回 schema 错误
 - **WHEN** LLM 返回的 `confidence` 不是数字、不能解析为数字或不是有限数字
 - **THEN** 系统返回 `ok: false` 且 `error_code: "LLM_SCHEMA_INVALID"`
-
 ### Requirement: 领域分类产物
 系统 SHALL 将分类结果写入素材仓库 summary 目录。
 
@@ -124,22 +123,20 @@
 #### Scenario: 不生成 domain.md
 - **WHEN** 领域分类成功
 - **THEN** 系统 MUST NOT 生成 `summary/domain.md`
-
 ### Requirement: domain_ready 响应
-系统 SHALL 保留领域分类成功响应 builder 作为内部阶段结果，但 `km ingest` 端到端成功路径 SHALL 在中文总结成功后返回 `summary_ready`。
+系统 SHALL 保留领域分类成功响应 builder 作为内部阶段结果，但 `km ingest` 端到端成功路径 SHALL 在 Obsidian processed pipeline 成功后返回 `processed_ready`。
 
 #### Scenario: domain_ready 成功响应 builder
 - **WHEN** 领域分类 pipeline 成功写入 `summary/domain.json`
 - **THEN** 内部响应 builder 可生成包含 `ok: true`、`status: "domain_ready"`、`content_type`、`source_url`、`asset_dir`、`canonical_text_path`、`domain_path`、`domain`、`taxonomy_version` 和 `model_ref` 的阶段性响应
 
 #### Scenario: km ingest 不停在 domain_ready
-- **WHEN** `km ingest` 文本化和领域分类均成功，且中文总结 pipeline 成功
-- **THEN** stdout JSON 返回 `summary_ready`，而不是 `domain_ready`
+- **WHEN** `km ingest` 文本化、领域分类、中文总结和 Obsidian note pipeline 均成功
+- **THEN** stdout JSON 返回 `processed_ready`，而不是 `domain_ready`
 
 #### Scenario: domain_ready 不表示完整知识笔记完成
 - **WHEN** 内部系统生成 `domain_ready`
 - **THEN** 该响应只表示领域分类完成，不表示中文总结、Obsidian 笔记或 SQLite `processed` 记录已经完成
-
 ### Requirement: domain classification skill 资产
 系统 SHALL 维护项目内领域分类 skill 文件，供未来 Hermes/Deep Agents 编排复用。
 
@@ -150,7 +147,6 @@
 #### Scenario: skill 不直接执行副作用
 - **WHEN** 阅读 `skills/domain-classification/SKILL.md`
 - **THEN** skill 文件 MUST 指示 agent 使用受控 Python tools，而不是自行调用 LLM、写入素材仓库、修改 SQLite 或写 Obsidian
-
 ### Requirement: 测试替身
 系统 SHALL 使用测试替身验证领域分类 pipeline，不依赖真实 LLM 网络调用。
 
@@ -165,4 +161,3 @@
 #### Scenario: 单元测试覆盖失败路径
 - **WHEN** 单元测试运行
 - **THEN** 它验证 LLM 请求失败返回 `LLM_REQUEST_FAILED`，schema 校验失败返回 `LLM_SCHEMA_INVALID`
-
