@@ -75,6 +75,52 @@ class ProjectSkillsTests(unittest.TestCase):
         self.assertIn("不得自行更新 SQLite", content)
         self.assertIn("不得重新调用 LLM", content)
 
+    def test_hermes_knowledge_ingest_skill_documents_cli_boundary(self):
+        root = Path(__file__).resolve().parents[1]
+        content = (root / "skills" / "hermes-knowledge-ingest" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("Hermes", content)
+        self.assertIn("完整知识导入流程", content)
+        self.assertIn("/home/xu/workspace/siku", content)
+        self.assertIn("uv run --env-file .env km ingest", content)
+        self.assertIn("stdin", content)
+        self.assertIn("JSON object", content)
+        self.assertIn("url", content)
+        self.assertIn('mode: "ingest"', content)
+
+    def test_hermes_knowledge_ingest_skill_documents_preflight_and_output(self):
+        root = Path(__file__).resolve().parents[1]
+        content = (root / "skills" / "hermes-knowledge-ingest" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn(".env", content)
+        self.assertIn("KM_CONFIG", content)
+        self.assertIn("DEEPSEEK_API_KEY", content)
+        self.assertIn("processed_ready", content)
+        self.assertIn("skipped_existing", content)
+        self.assertIn("ok", content)
+        self.assertIn("error_code", content)
+        self.assertIn("message", content)
+        self.assertIn("recoverable", content)
+        self.assertIn("stdout", content)
+        self.assertIn("stderr", content)
+
+    def test_hermes_knowledge_ingest_skill_documents_restrictions_and_migration(self):
+        root = Path(__file__).resolve().parents[1]
+        content = (root / "skills" / "hermes-knowledge-ingest" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("不增加自己的重试循环", content)
+        self.assertIn("不得直接调用内部流水线工具", content)
+        self.assertIn("route_url", content)
+        self.assertIn("collect_bilibili_text", content)
+        self.assertIn("collect_web_article_text", content)
+        self.assertIn("classify_domain", content)
+        self.assertIn("generate_summary", content)
+        self.assertIn("write_obsidian_note", content)
+        self.assertIn("mark_source_processed", content)
+        self.assertIn("不主动读取", content)
+        self.assertIn("uv run --extra agent --env-file .env km agent-ingest", content)
+        self.assertIn("自动回退", content)
+
 
 if __name__ == "__main__":
     unittest.main()
