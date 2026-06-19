@@ -1,28 +1,46 @@
 # siku 思库
 
-## 项目文档
+siku 是一个面向 Hermes agent 的知识导入 CLI。它接收单个 URL，采集或转写正文，生成结构化中文总结，写入 Obsidian，并把原始素材、中间产物和去重状态保存在 Obsidian vault 外部。
 
-- [项目探索总览](docs/project-overview.md)：记录项目定位、总体架构、阶段路线、当前状态和后续演进方向。
-- [决策日志](docs/decision-log.md)：记录前期讨论中的关键问题、选项、最终决策和状态。
+当前稳定入口是 `km ingest`。输入和输出都使用 JSON，方便 Hermes 或其他上层调度器做重试、错误处理和状态跟踪。
 
-## 知识导入 CLI 本地状态基础
+## 当前能力
 
-当前阶段实现 `km ingest` 的协议骨架、本地状态基础、确定性 URL 路由、Bilibili 视频到规范文本的处理闭环、网页文章到规范正文的处理闭环、文本化之后的领域分类闭环、中文总结闭环，以及 Obsidian 写入和 SQLite `processed` 状态闭环，用于 Hermes agent 调用。它处理 CLI 契约、阶段二配置校验、URL 规范化、素材仓库初始化、SQLite 去重索引、重复来源跳过、内容路由、Bilibili 元数据/字幕/音频/本地 Whisper 到 `canonical/transcript.md` 的生成、微信公众号/通用网页到 `canonical/content.md` 的生成、`summary/domain.json` 和 `summary/summary.json` 的生成、Obsidian Markdown note 写入，以及 `sources.status = "processed"` 标记；不实现 Deep Agents 运行时业务能力。
+- 支持 Bilibili 视频 URL 和普通网页文章 URL。
+- Bilibili 优先使用字幕；没有字幕时下载音频并使用 OpenVINO Whisper 本地转写。
+- 网页文章支持微信公众号专用解析和 `trafilatura` 通用解析。
+- 文本化后自动执行领域分类、中文总结、Obsidian note 写入和 SQLite `processed` 标记。
+- 已处理过的 `normalized_url` 会返回 `skipped_existing`，避免重复写入。
 
-## 项目管理
+## 快速开始
 
-本工程使用 `uv` 进行 Python 项目管理、依赖解析、锁文件管理和项目虚拟环境管理。
-
-- `pyproject.toml` 是项目元数据和依赖声明入口。
-- `uv.lock` 是需要提交的锁文件，用于固定依赖解析结果。
-- `.python-version` 固定本地开发默认 Python 为 `3.11`。
-- `.venv/` 是 `uv sync` 自动创建和同步的项目虚拟环境，只保留在本地，不提交。
-- `.uv-cache/` 是受限环境中可选的本地 uv 缓存目录，只保留在本地，不提交。
-
-同步项目环境：
+同步基础依赖：
 
 ```bash
 uv sync
+```
+
+创建 `.env`：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，至少填入：
+
+```dotenv
+DEEPSEEK_API_KEY=your-deepseek-api-key-here
+KM_CONFIG=/home/xu/.config/siku/config.toml
+```
+
+创建 `KM_CONFIG` 指向的 TOML 配置文件。完整示例见下方“配置”。
+
+运行一次网页导入：
+
+```bash
+uv run --env-file .env km ingest <<'JSON'
+{"url":"https://example.com/article","mode":"ingest"}
+JSON
 ```
 
 运行测试：
@@ -31,21 +49,32 @@ uv sync
 uv run python -m unittest discover -s tests -v
 ```
 
-在受限环境中，如果默认 uv 缓存目录不可写，可以使用：
+如果当前环境的默认 uv 缓存目录不可写，改用项目内缓存：
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run python -m unittest discover -s tests -v
 ```
 
-示例配置：
+## 配置
+
+配置默认读取 `~/.config/km/config.toml`，推荐通过 `.env` 显式指定：
+
+```dotenv
+KM_CONFIG=/home/xu/.config/siku/config.toml
+DEEPSEEK_API_KEY=your-deepseek-api-key-here
+```
+
+`DEEPSEEK_API_KEY` 是示例 LLM 配置使用的 API key 环境变量。实际变量名由 TOML 中的 `api_key_env` 决定。
+
+TOML 示例：
 
 ```toml
-vault_path = "/Users/xu/Obsidian"
+vault_path = "/home/xu/Obsidian"
 inbox_dir = "Inbox/Knowledge"
-asset_store_path = "/Users/xu/KnowledgeAssets"
+asset_store_path = "/home/xu/KnowledgeAssets"
 
 [whisper]
-model_dir = "/Users/xu/models/whisper-openvino"
+model_dir = "/home/xu/models/whisper-openvino"
 model_size = "medium"
 device = "GPU"
 
@@ -78,132 +107,141 @@ candidate_models = ["deepseek_v4_flash", "deepseek_v4_pro"]
 primary_model = "deepseek_v4_pro"
 ```
 
-`asset_store_path` 必须位于 `vault_path` 外部。`inbox_dir` 必须是 vault 内相对路径，不能是绝对路径，也不能包含 `..`。
+关键约束：
 
-`whisper.model_dir` 默认是 `models/whisper`，`whisper.model_size` 默认是 `medium`，可配置为 `tiny`、`small` 或 `medium` 这类 HuggingFace Whisper 尺寸名。`whisper.device` 默认是 `GPU`，用于 OpenVINO + optimum-intel 的 Intel Xe 集成显卡加速；也可以显式配置为 `GPU.0`。首次遇到无字幕 Bilibili 视频时，系统会把 Whisper 模型导出/缓存到 `whisper.model_dir/<model_size>/`，不会复用其他项目的模型目录。阶段四不允许静默 CPU fallback，`whisper.device = "CPU"` 会被拒绝。
+- `vault_path` 必须是已存在且可写的 Obsidian vault。
+- `inbox_dir` 必须是 vault 内相对路径，不能是绝对路径，也不能包含 `..`。
+- `asset_store_path` 必须位于 vault 外部。
+- `[llm.tasks]` 引用的模型必须存在于 `[llm.models]`。
+- `api_key_env` 指向的环境变量必须存在且非空。
+- `summary.max_input_chars = 0` 表示总结阶段不主动截断输入。
 
-阶段六在文本化成功后执行领域分类，阶段七在领域分类成功后执行中文总结。`[llm.models.<ref>]` 集中定义可用模型，`[llm.tasks] domain_classification = "<ref>"` 指定分类任务使用哪个模型，`[llm.tasks] summary_generation = "<ref>"` 指定非评测模式和主输出使用的总结模型。首版只支持 `provider = "openai_compatible"`，被引用模型必须配置 `provider`、`base_url`、`model` 和 `api_key_env`，且 `api_key_env` 指向的环境变量必须存在且非空。模型可选配置 `timeout_seconds` 和 `max_output_tokens`，默认分别为 `120` 和 `8192`。
+## GPU / Whisper
 
-`[summary].max_input_chars = 0` 表示总结阶段不主动截断输入。如果启用 `[summary.evaluation]`，系统会并发调用 `candidate_models`，把 `primary_model` 的结果写入权威 `summary/summary.json`，并把候选结果或失败记录写入 `summary/evaluations/<model_ref>.json`。评测只产出候选文件，不做评分、排序、manifest、UI 或人工选择记录。
-
-## URL 路由
-
-阶段三在本地状态层之后执行确定性 URL 路由，不访问网络、不展开短链、不下载内容。
-
-- `www.bilibili.com/video/<id>`、`bilibili.com/video/<id>`、`m.bilibili.com/video/<id>` 路由为 `bilibili_video`。
-- `b23.tv/<id>` 路由为 `bilibili_video` 候选，短链展开留给后续 Bilibili collector。
-- 非 Bilibili 的普通 `http/https` URL 路由为 `web_article`。
-- Bilibili 非视频路径和空 `b23.tv` 路径路由为 `unsupported`。
-
-项目内 `skills/` 目录保存未来 Hermes/Deep Agents 使用的版本化指令资产，例如 `skills/url-routing/SKILL.md` 和 `skills/domain-classification/SKILL.md`。这些文件不是当前研发环境使用的 `.codex/skills/`，也不允许 agent 绕过受控 Python tools 自行写入素材仓库、SQLite 或 Obsidian。
-
-## Bilibili 文本化
-
-阶段四对 `bilibili_video` URL 执行文本化闭环：
-
-- 通过受控 `yt-dlp` wrapper 获取元数据。
-- 优先使用可用字幕生成 `canonical/transcript.md`。
-- 没有字幕时下载 WAV 音频到 `raw/`。
-- 使用 OpenVINO + optimum-intel Whisper 在 Intel Xe 集成显卡上本地转写。
-- 成功后继续执行领域分类、中文总结和 Obsidian 写入，并在完整处理成功时返回 `processed_ready`。
-
-这一阶段生成规范文本和素材清单后会继续进入阶段六领域分类、阶段七中文总结和阶段八 Obsidian processed pipeline。
-
-无字幕视频需要安装 GPU 可选依赖并启用 extra：
+无字幕 Bilibili 视频需要 GPU 可选依赖：
 
 ```bash
 uv sync --extra gpu
+```
 
+导入时也要启用 extra：
+
+```bash
 uv run --extra gpu --env-file .env km ingest <<'JSON'
 {"url":"https://www.bilibili.com/video/BV1zoGv6NE2q","mode":"ingest"}
 JSON
 ```
 
-Arch Linux 上还需要系统 OpenCL/Level Zero 运行时，并确认 OpenVINO 能看到 `GPU`：
+Arch Linux 上需要系统 OpenCL/Level Zero 运行时：
 
 ```bash
 sudo pacman -S intel-compute-runtime level-zero-loader
 sudo usermod -a -G render $USER
+```
+
+确认 OpenVINO 能看到 Intel GPU：
+
+```bash
 uv run --extra gpu python -c "from openvino import Core; print(Core().available_devices)"
 ```
 
-## 网页文章文本化
+期望输出包含 `GPU`，例如：
 
-阶段五对 `web_article` URL 执行文本化闭环：
+```text
+['CPU', 'GPU']
+```
 
-- 使用受控 HTTP fetcher 抓取网页 HTML。
-- 保存原始 HTML 到 `raw/page.html`。
-- `mp.weixin.qq.com` 使用微信公众号专用 parser。
-- 其他普通网页使用 `trafilatura` 通用 fallback parser。
-- 保存元数据到 `raw/metadata.json`。
-- 生成规范正文 `canonical/content.md`。
-- 成功后继续执行领域分类、中文总结和 Obsidian 写入，并在完整处理成功时返回 `processed_ready`。
+Whisper 配置说明：
 
-本阶段依赖组合为 `httpx`、`trafilatura` 和 `beautifulsoup4`，由 uv 管理。阶段五不实现 Playwright/browser fallback、登录态/cookie 管理、CSDN 专用 parser 或知乎专用 parser；无法通过普通 HTTP 获取或解析的页面会返回 `WEB_FETCH_FAILED` 或 `WEB_PARSE_FAILED`。
+- `whisper.model_dir` 默认是 `models/whisper`，建议在真实使用时配置为 `/home/xu/models/whisper-openvino` 这类 Linux 可写路径。
+- 首次无字幕转写会把模型导出或缓存到 `whisper.model_dir/<model_size>/`。
+- `whisper.model_size` 默认是 `medium`，可配置为 `tiny`、`small` 或 `medium` 等 HuggingFace Whisper 尺寸名。
+- `whisper.device` 默认是 `GPU`，也可以显式配置为 `GPU.0`。
+- 项目不允许静默 CPU fallback；`whisper.device = "CPU"` 会被拒绝，GPU runtime 不可用会返回 `WHISPER_UNAVAILABLE`。
 
-这一阶段生成规范正文和素材清单后会继续进入阶段六领域分类、阶段七中文总结和阶段八 Obsidian processed pipeline。
+## 处理流程
 
-## 领域分类
+```text
+stdin JSON
+  -> 配置加载
+  -> URL 规范化
+  -> SQLite processed 去重
+  -> 确定性 URL 路由
+  -> Bilibili 或网页文本化
+  -> 领域分类
+  -> 中文总结
+  -> Obsidian note 写入
+  -> SQLite 标记 processed
+  -> stdout JSON
+```
 
-阶段六对 `bilibili_video` 和 `web_article` 的规范文本执行领域分类：
+URL 路由规则：
 
-- 读取 `canonical/transcript.md` 或 `canonical/content.md`。
-- 使用 `[llm.tasks] domain_classification` 引用的 OpenAI-compatible 模型。
-- 分类 prompt 只使用规范文本前 12000 个字符；超长文本会在 prompt 中标明已截断。
-- 只从固定领域表中选择一个主领域：`AI`、`编程`、`产品`、`商业`、`学习`、`心理学`、`投资`、`写作`、`生活`、`菜谱`、`其他`。
-- 内容跨领域、证据不足或低置信度时归入 `其他`，不因为置信度低而失败。
-- 写入 `summary/domain.json`，不生成 `summary/domain.md`。
-- 当前仍由 Python 确定性 pipeline 自动接在文本化之后执行，不接入 LangChain Deep Agents 运行时。
+- `www.bilibili.com/video/<id>`、`bilibili.com/video/<id>`、`m.bilibili.com/video/<id>` 路由为 `bilibili_video`。
+- `b23.tv/<id>` 路由为 `bilibili_video` 候选，短链展开交给 Bilibili collector。
+- 非 Bilibili 的普通 `http/https` URL 路由为 `web_article`。
+- Bilibili 非视频路径和空 `b23.tv` 路径路由为 `unsupported`。
 
-`summary/domain.json` 示例：
+## 输出产物
+
+每个来源使用 `sha256(normalized_url).hexdigest()` 作为 `source_id`。素材仓库结构：
+
+```text
+<asset_store_path>/
+  index.sqlite
+  <source_id>/
+    raw/
+    canonical/
+    summary/
+```
+
+常见产物：
+
+- `raw/metadata.json`：采集到的来源元数据。
+- `raw/page.html`：网页文章原始 HTML。
+- `raw/subtitle.*`：Bilibili 原始字幕。
+- `raw/audio.wav`：无字幕 Bilibili 的本地音频。
+- `canonical/transcript.md`：Bilibili 规范转写文本。
+- `canonical/content.md`：网页文章规范正文。
+- `summary/domain.json`：领域分类结果。
+- `summary/summary.json`：权威中文总结。
+- `<vault_path>/<inbox_dir>/YYYY-MM-DD-safe-title.md`：Obsidian note。
+
+Obsidian note 只包含总结、原始链接和素材路径引用，不嵌入完整原文、完整 transcript、原始 HTML 或完整 prompt。
+
+## CLI 响应
+
+成功响应示例：
 
 ```json
 {
-  "taxonomy_version": 1,
-  "domain": "AI",
-  "confidence": 0.86,
-  "reason": "内容主要讨论大模型 Agent 架构和工具调用。",
-  "model_ref": "deepseek_v4_flash",
-  "model": "deepseek-v4-flash"
+  "ok": true,
+  "status": "processed_ready",
+  "content_type": "web_article",
+  "source_url": "https://example.com/article",
+  "asset_dir": "/home/xu/KnowledgeAssets/<source_id>",
+  "canonical_text_path": "/home/xu/KnowledgeAssets/<source_id>/canonical/content.md",
+  "domain_path": "/home/xu/KnowledgeAssets/<source_id>/summary/domain.json",
+  "summary_path": "/home/xu/KnowledgeAssets/<source_id>/summary/summary.json",
+  "note_path": "/home/xu/Obsidian/Inbox/Knowledge/2026-06-19-Python-调试实践.md",
+  "domain": "编程",
+  "title": "Python 调试实践"
 }
 ```
 
-## 中文总结
+重复来源跳过示例：
 
-阶段七对 `bilibili_video` 和 `web_article` 的规范文本执行单次中文总结：
-
-- 读取 `canonical/transcript.md` 或 `canonical/content.md`。
-- 读取阶段六生成的 `summary/domain.json`，按主领域选择 `prompts/summary/domains/*.md`。
-- 使用 `prompts/summary/common.md` 约束模型只输出纯 JSON object。
-- 写入权威总结 `summary/summary.json`。
-- 默认不主动截断输入；显式配置 `max_input_chars > 0` 时按字符数截断并记录 `input.truncated`。
-- 评测模式开启时，并发写入 `summary/evaluations/<model_ref>.json`，主模型成功后写入 `summary/summary.json`。
-- 当前仍由 Python 确定性 pipeline 自动接在领域分类之后执行，不接入 LangChain Deep Agents 运行时。
-
-`summary/summary.json` 包含 `schema_version`、`domain`、`title`、`one_sentence_summary`、`core_points`、`key_concepts`、`domain_notes`、`actionable_insights`、`questions`、`tags`、`source`、`input`、`prompt`、`model_ref` 和 `model`。模型只负责内容字段；系统会覆盖来源、输入、prompt 和模型追溯字段。
-
-## Obsidian 写入与 processed 状态
-
-阶段八在中文总结成功后自动执行：
-
-- 读取并校验 `summary/summary.json`，确认 `schema_version`、来源 URL 和素材路径与当前 pipeline 一致。
-- 将结构化总结渲染成 Obsidian Markdown，写入 `<vault_path>/<inbox_dir>/YYYY-MM-DD-safe-title.md`。
-- `safe-title` 会移除 `/ \ : * ? " < > |`，折叠空白，最长 80 个字符；为空时使用 `untitled`。
-- 同 `source_id` 重试会覆盖同一 note 并保留旧 `created_at`；不同来源同名时使用 `-<source_id前8位>` 兜底。
-- note 正文只包含总结、原始链接和素材路径引用，不嵌入完整原文、完整 transcript、原始 HTML 或完整 prompt。
-- note 写入成功后，SQLite `sources` 写入或更新为 `status = "processed"`，并清空错误字段。
-
-`vault_path` 必须已存在、是目录且可写；`inbox_dir` 可以自动创建。Obsidian 写入失败返回 `OBSIDIAN_WRITE_FAILED`。note 已写入但 SQLite processed 状态写入失败时返回 `INDEX_WRITE_FAILED`，响应中会包含已写入的 `note_path`，方便后续重试和人工检查。
-
-示例调用：
-
-```bash
-KM_CONFIG=/path/to/config.toml uv run km ingest <<'JSON'
-{"url":"https://example.com"}
-JSON
+```json
+{
+  "ok": true,
+  "status": "skipped_existing",
+  "note_path": "/home/xu/Obsidian/Inbox/Knowledge/example.md",
+  "asset_dir": "/home/xu/KnowledgeAssets/<source_id>",
+  "source_url": "https://example.com"
+}
 ```
 
-如果 URL 合法但当前不支持，会返回：
+错误响应示例：
 
 ```json
 {
@@ -214,55 +252,53 @@ JSON
 }
 ```
 
-Bilibili 文本化、领域分类、中文总结和 Obsidian 写入成功会返回：
+常见错误码：
 
-```json
-{
-  "ok": true,
-  "status": "processed_ready",
-  "content_type": "bilibili_video",
-  "source_url": "https://www.bilibili.com/video/BV...",
-  "asset_dir": "/Users/xu/KnowledgeAssets/<source_id>",
-  "canonical_text_path": "/Users/xu/KnowledgeAssets/<source_id>/canonical/transcript.md",
-  "domain_path": "/Users/xu/KnowledgeAssets/<source_id>/summary/domain.json",
-  "summary_path": "/Users/xu/KnowledgeAssets/<source_id>/summary/summary.json",
-  "note_path": "/Users/xu/Obsidian/Inbox/Knowledge/2026-06-15-AI-Agent-工具系统复盘.md",
-  "domain": "AI",
-  "title": "AI Agent 工具系统复盘"
-}ebv
+| 错误码 | 含义 | 可恢复 |
+| --- | --- | --- |
+| `INPUT_INVALID` | stdin JSON 或请求字段不合法 | 否 |
+| `CONFIG_INVALID` | 配置文件缺失、不可读或字段不合法 | 否 |
+| `UNSUPPORTED_URL` | URL 合法但当前版本不支持 | 否 |
+| `BILIBILI_METADATA_FAILED` | Bilibili 元数据采集失败 | 是 |
+| `BILIBILI_TRANSCRIPT_FAILED` | Bilibili 字幕、音频或文本化失败 | 是 |
+| `WHISPER_UNAVAILABLE` | OpenVINO Whisper GPU 转写不可用 | 是 |
+| `WEB_FETCH_FAILED` | 网页抓取失败 | 是 |
+| `WEB_PARSE_FAILED` | 网页正文解析失败 | 是 |
+| `LLM_REQUEST_FAILED` | LLM 请求失败 | 是 |
+| `LLM_SCHEMA_INVALID` | 领域分类 LLM 返回不符合 schema | 是 |
+| `SUMMARY_INPUT_INVALID` | 总结输入缺失或不合法 | 是 |
+| `SUMMARY_INPUT_TOO_LARGE` | 模型/API 上下文超限 | 是 |
+| `SUMMARY_SCHEMA_INVALID` | 总结 LLM 返回不符合 schema | 是 |
+| `OBSIDIAN_WRITE_FAILED` | Obsidian note 写入失败 | 是 |
+| `INDEX_WRITE_FAILED` | note 已写入但 SQLite processed 状态写入失败 | 是 |
+
+协议错误退出码为 `1`，可恢复处理失败退出码为 `2`。
+
+## 开发
+
+项目使用 `uv` 管理 Python 版本、依赖、锁文件和虚拟环境。
+
+- `pyproject.toml`：项目元数据和依赖声明。
+- `uv.lock`：需要提交的锁文件。
+- `.python-version`：本地开发默认 Python 版本。
+- `.venv/`：`uv sync` 自动创建的本地虚拟环境，不提交。
+- `.uv-cache/`：受限环境中可选的项目内 uv 缓存目录，不提交。
+
+常用命令：
+
+```bash
+uv sync
+uv sync --extra gpu
+uv run python -m unittest discover -s tests -v
+uv run --env-file .env km ingest <<'JSON'
+{"url":"https://example.com/article","mode":"ingest"}
+JSON
 ```
 
-网页文章文本化、领域分类、中文总结和 Obsidian 写入成功会返回：
+项目内 `skills/` 目录保存未来 Hermes/Deep Agents 使用的版本化指令资产。它不是当前研发环境使用的 `.codex/skills/`，也不授予 agent 直接写素材仓库、SQLite 或 Obsidian 的权限。
 
-```json
-{
-  "ok": true,
-  "status": "processed_ready",
-  "content_type": "web_article",
-  "source_url": "https://example.com/article",
-  "asset_dir": "/Users/xu/KnowledgeAssets/<source_id>",
-  "canonical_text_path": "/Users/xu/KnowledgeAssets/<source_id>/canonical/content.md",
-  "domain_path": "/Users/xu/KnowledgeAssets/<source_id>/summary/domain.json",
-  "summary_path": "/Users/xu/KnowledgeAssets/<source_id>/summary/summary.json",
-  "note_path": "/Users/xu/Obsidian/Inbox/Knowledge/2026-06-15-Python-调试实践.md",
-  "domain": "编程",
-  "title": "Python 调试实践"
-}
-```
+## 更多文档
 
-CLI 端到端成功响应不暴露 `summary_model_ref`、`evaluation_enabled`、`evaluation_dir`、`taxonomy_version` 或 `model_ref`；这些追溯信息保留在素材仓库 JSON 产物中。
-
-LLM 请求失败返回 `LLM_REQUEST_FAILED`，领域分类响应不是合法分类 JSON、字段不符合 schema，或 `confidence` 不是有限数字时返回 `LLM_SCHEMA_INVALID`。中文总结输入缺失或不合法返回 `SUMMARY_INPUT_INVALID`，模型/API 上下文超限返回 `SUMMARY_INPUT_TOO_LARGE`，总结响应不是合法纯 JSON object 或字段不符合 schema 返回 `SUMMARY_SCHEMA_INVALID`。Obsidian 写入失败返回 `OBSIDIAN_WRITE_FAILED`。note 已写入但 SQLite processed 写入失败返回 `INDEX_WRITE_FAILED`，并包含 `note_path`。这些都是可恢复处理失败，退出码为 `2`。
-
-如果 SQLite 索引中已经存在同一 `normalized_url` 且 `status = 'processed'` 的记录，会返回：
-
-```json
-{
-  "ok": true,
-  "status": "skipped_existing",
-  "note_path": "/Users/xu/Obsidian/Inbox/Knowledge/example.md",
-  "asset_dir": "/Users/xu/KnowledgeAssets/<source_id>",
-  "source_url": "https://example.com"
-}
-```
-
+- [项目探索总览](docs/project-overview.md)：项目定位、架构边界、阶段路线和现状。
+- [决策日志](docs/decision-log.md)：关键问题、选项、最终决策和状态。
+- `openspec/changes/**`：阶段提案、设计、任务和归档历史。
