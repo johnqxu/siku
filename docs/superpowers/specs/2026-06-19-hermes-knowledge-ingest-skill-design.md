@@ -1,80 +1,80 @@
-# Hermes Knowledge Ingest Skill Design
+# Hermes 知识导入 skill 设计
 
-## Goal
+## 目标
 
-Add one high-level project skill for Hermes to manage the complete knowledge ingest workflow: receive a URL, call the current stable CLI, and interpret the structured result without exposing internal pipeline tools.
+新增一个面向 Hermes 的高层项目 skill，用于托管完整知识导入流程：接收一个 URL，调用当前稳定 CLI，并解释结构化结果，同时不向 Hermes 暴露内部流水线工具。
 
-This skill is a Hermes-facing entry point. It is not an internal Deep Agents sub-skill and does not grant Hermes permission to call project Python tools directly.
+这个 skill 是 Hermes 的入口能力，不是内部 Deep Agents 子 skill，也不授予 Hermes 直接调用项目 Python 工具的权限。
 
-## Skill Location
+## Skill 位置
 
-Create the skill at:
+新增 skill 文件：
 
 ```text
 skills/hermes-knowledge-ingest/SKILL.md
 ```
 
-The name is intentionally explicit. Existing skills such as `bilibili-ingest`, `summary-generation`, and `obsidian-write` describe internal pipeline capabilities. `hermes-knowledge-ingest` describes the single complete workflow Hermes should call.
+这个名称刻意保留 Hermes 前缀。现有 `bilibili-ingest`、`summary-generation`、`obsidian-write` 等 skills 描述的是内部流水线能力；`hermes-knowledge-ingest` 描述 Hermes 应该调用的单一完整工作流。
 
-## Current Invocation Contract
+## 当前调用契约
 
-Until `km agent-ingest` is implemented, the skill uses the current stable deterministic CLI:
+在 `km agent-ingest` 实现之前，该 skill 使用当前稳定的确定性 CLI：
 
 ```bash
 cd /home/xu/workspace/siku
 uv run --env-file .env km ingest
 ```
 
-Hermes passes exactly one JSON object on stdin:
+Hermes 通过 stdin 传入且只传入一个 JSON object：
 
 ```json
 {"url":"https://example.com/article","mode":"ingest"}
 ```
 
-`url` is required. `mode` should be `ingest`. The skill should not introduce batch mode, dry run, force, rerun, or interactive confirmation.
+`url` 必填。`mode` 应为 `ingest`。这个 skill 不引入批处理、dry run、force、rerun 或交互确认。
 
-## Lightweight Preflight
+## 轻量预检查
 
-Before invoking the CLI, the skill should instruct Hermes to confirm the local execution context is ready:
+调用 CLI 前，skill 应指导 Hermes 确认本地执行上下文已经就绪：
 
-- Current working directory is `/home/xu/workspace/siku`.
-- `.env` is available in that directory.
-- `.env` provides `KM_CONFIG`.
-- `DEEPSEEK_API_KEY` is configured through `.env` or the inherited environment.
+- 当前工作目录是 `/home/xu/workspace/siku`。
+- 该目录下存在可用的 `.env`。
+- `.env` 提供 `KM_CONFIG`。
+- `DEEPSEEK_API_KEY` 已通过 `.env` 或继承环境配置。
 
-The skill should not duplicate full CLI validation. Obsidian paths, asset store paths, model references, URL validity, downloader behavior, Whisper runtime, and SQLite errors remain the CLI's responsibility and must be returned through the CLI's structured JSON envelope.
+skill 不重复实现完整 CLI 校验。Obsidian 路径、素材仓库路径、模型引用、URL 合法性、下载器行为、Whisper 运行时和 SQLite 错误仍由 CLI 负责，并通过 CLI 的结构化 JSON 响应封装返回。
 
-## Retry Policy
+## 重试策略
 
-The skill must not add its own retry loop.
+skill 不增加自己的重试循环。
 
-The CLI is the only layer that may perform limited retries for recoverable internal operations. If the CLI returns a failure JSON, the skill should pass that result back to Hermes and explain the decision rule:
+CLI 是唯一可以对内部可恢复操作执行有限重试的层。如果 CLI 返回失败 JSON，skill 应把该结果交还 Hermes，并说明决策规则：
 
-- `recoverable: true`: Hermes may schedule a later retry at the workflow level.
-- `recoverable: false`: Hermes should stop and report the failure.
+- `recoverable: true`：Hermes 可以在工作流层稍后重新排队或重试。
+- `recoverable: false`：Hermes 应停止并向用户报告失败。
 
-This avoids double retries between Hermes and the CLI runner.
+这样可以避免 Hermes 和 CLI 运行器之间发生双重重试。
 
-## Output Handling
+## 输出处理
 
-The CLI stdout JSON is the source of truth. The skill should not rewrite factual fields or hide paths.
+CLI stdout JSON 是事实来源。skill 不应改写事实字段，也不应隐藏路径字段。
 
-For successful responses:
+成功响应的解释规则：
 
-- `status: "processed_ready"` means the knowledge item has been downloaded or parsed, summarized, written to Obsidian, and marked processed.
-- `status: "skipped_existing"` means SQLite already has a processed record for the normalized URL and Hermes should not repeat the import.
+- `status: "processed_ready"` 表示该知识条目已经完成下载或解析、中文总结、Obsidian 写入和 processed 标记。
+- `status: "skipped_existing"` 表示 SQLite 已经存在该规范化 URL 的 processed 记录，Hermes 不应重复导入。
 
-For failures:
+失败响应的处理规则：
 
-- Preserve `ok`, `error_code`, `message`, and `recoverable`.
-- Do not convert business errors into conversational summaries only.
-- Do not parse stderr as the authoritative result.
+- 保留 `ok`、`error_code`、`message` 和 `recoverable`。
+- 不得只把业务错误转换成对话式摘要。
+- 不得把 stderr 当成权威结果解析。
 
-Hermes may use returned paths such as `note_path`, `asset_dir`, `canonical_text_path`, `domain_path`, and `summary_path` for tracking. By default, Hermes should not read note, summary, transcript, HTML, audio, or other generated files after success. If a later workflow needs file content, that should be a separate explicit capability.
+Hermes 可以使用返回的 `note_path`、`asset_dir`、`canonical_text_path`、`domain_path`、`summary_path` 等路径做任务跟踪。默认情况下，Hermes 成功后不主动读取笔记、总结、转写稿、HTML、音频或其他生成文件内容。如果后续工作流需要读取文件内容，应设计为独立的显式能力。
 
-## Boundary Rules
+## 边界规则
 
-Hermes must not call internal pipeline tools directly:
+Hermes 不得直接调用内部流水线工具：
 
 - `route_url`
 - `prepare_source_workspace`
@@ -85,32 +85,32 @@ Hermes must not call internal pipeline tools directly:
 - `write_obsidian_note`
 - `mark_source_processed`
 
-Hermes should treat `km ingest` as the stable public boundary for the current phase. It should not write to the asset store, SQLite, Obsidian vault, or project skill files itself.
+当前阶段，Hermes 应把 `km ingest` 视为稳定公开边界。Hermes 不应自行写素材仓库、SQLite、Obsidian vault 或项目 skill 文件。
 
-The skill should also remind Hermes that stdout must contain exactly one JSON object and that logs or diagnostics belong to stderr.
+skill 还应提醒 Hermes：stdout 必须只包含一个 JSON object，日志和诊断信息属于 stderr。
 
-## Migration Path
+## 迁移路径
 
-When the Stage 9 Deep Agents entry point is implemented, update this skill to call:
+阶段九 Deep Agents 入口实现后，将该 skill 的命令更新为：
 
 ```bash
 cd /home/xu/workspace/siku
 uv run --extra agent --env-file .env km agent-ingest
 ```
 
-That future change should be explicit. The skill should not automatically fallback from `km agent-ingest` to `km ingest`, because fallback would hide Deep Agents orchestration failures.
+这个未来变更必须显式完成。skill 不应从 `km agent-ingest` 自动回退到 `km ingest`，因为自动回退会掩盖 Deep Agents 编排失败。
 
-The Hermes-facing input and output decision rules should stay the same across the migration.
+迁移前后，Hermes 可见的输入契约和输出决策规则应保持一致。
 
-## Tests And Review
+## 测试与审查
 
-Implementation should add or update tests that verify:
+实现时应新增或更新测试，验证：
 
-- `skills/hermes-knowledge-ingest/SKILL.md` exists.
-- The skill names `uv run --env-file .env km ingest` as the current command.
-- The skill documents the lightweight preflight requirements.
-- The skill forbids Hermes from calling internal tools directly.
-- The skill states that it does not perform extra retries.
-- The skill documents the later switch to `km agent-ingest` without automatic fallback.
+- `skills/hermes-knowledge-ingest/SKILL.md` 存在。
+- skill 将 `uv run --env-file .env km ingest` 记录为当前命令。
+- skill 记录轻量预检查要求。
+- skill 禁止 Hermes 直接调用内部工具。
+- skill 声明自己不执行额外重试。
+- skill 记录未来切换到 `km agent-ingest`，且不允许自动回退。
 
-Manual review should confirm the skill does not imply Hermes can read full source content, write project state, or bypass the CLI JSON contract.
+人工审查应确认：这个 skill 没有暗示 Hermes 可以读取完整来源内容、写项目状态，或绕过 CLI JSON 契约。
