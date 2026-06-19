@@ -81,8 +81,8 @@
 
 #### Scenario: 重复来源 state
 - **WHEN** `km agent-ingest` 命中 SQLite `status = 'processed'` 的重复来源
-- **THEN** 系统 MUST 写入 `state.json`，且 stage MUST 表示已到达 `processed_ready` 或等价完成状态
+- **THEN** 系统 MUST 写入 `state.json`，且 `stage` MUST 为 `processed_ready`
 
 #### Scenario: 重复来源 trace
 - **WHEN** `km agent-ingest` 命中 SQLite `status = 'processed'` 的重复来源
-- **THEN** 系统 MUST 追加 trace 事件记录跳过原因，且 MUST NOT 执行后续有副作用 tools
+- **THEN** 系统 MUST 追加 trace 事件记录 `skip_reason: "processed_existing"`，且 MUST NOT 执行后续有副作用 tools

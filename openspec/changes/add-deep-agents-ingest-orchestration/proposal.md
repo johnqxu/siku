@@ -12,7 +12,7 @@
 - 新增 Python 状态机 guard，强制 Deep Agents 只能按合法状态转换调用 tools。
 - 新增 agent 运行状态与 trace：`<asset_dir>/agent/state.json` 和 `<asset_dir>/agent/trace.jsonl`。
 - 新增 `AgentRuntime` 适配层与 `FakeAgentRuntime` 测试替身，默认测试不依赖真实 Deep Agents runtime 或远程 agent 模型。
-- 新增 `agent` optional extra；缺少 Deep Agents runtime 时返回 `AGENT_RUNTIME_UNAVAILABLE`。
+- 新增 `agent` optional extra，依赖 PyPI `deepagents>=0.6.11,<0.7`，生产适配器通过 `from deepagents import create_deep_agent` 接入真实 runtime；缺少 Deep Agents runtime 时返回 `AGENT_RUNTIME_UNAVAILABLE`。
 - 新增 `[llm.tasks] agent_orchestration = "<model_ref>"`，首版建议配置为 `deepseek_v4_flash`。
 - `km agent-ingest` 成功/失败响应在现有 envelope 基础上增加 `orchestrator`、`trace_path` 和 `state_path`。
 - 读取项目内 `skills/*.md` 作为 Deep Agents 编排指令资产，但所有副作用仍必须通过受控 Python tools。

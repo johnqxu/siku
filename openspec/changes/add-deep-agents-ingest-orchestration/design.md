@@ -23,7 +23,7 @@
 - 支持默认复用已有成功产物，降低下载、Whisper 和 LLM 成本。
 - 支持网络/API/下载类错误每个 tool 最多自动重试 1 次。
 - 新增 `AgentRuntime` 适配层和 `FakeAgentRuntime`，让默认测试不依赖真实 Deep Agents runtime。
-- 新增 `agent` optional extra 和 `llm.tasks.agent_orchestration` 配置引用。
+- 新增 `agent` optional extra，固定引入 PyPI `deepagents` runtime，并增加 `llm.tasks.agent_orchestration` 配置引用。
 - 更新项目内 `skills/*.md`，让它们成为 Deep Agents runtime 读取的指令资产。
 
 **Non-Goals:**
@@ -99,6 +99,7 @@ Deep Agents 可以选择下一步，但每次 tool 调用前必须经过 Python 
 ```text
 initialized -> route_url -> routed
 routed -> prepare_source_workspace -> workspace_ready
+routed -> prepare_source_workspace (processed_existing) -> processed_ready
 workspace_ready -> collect_bilibili_text|collect_web_article_text -> text_ready
 text_ready -> classify_domain -> domain_ready
 domain_ready -> generate_summary -> summary_ready
@@ -112,7 +113,7 @@ note_ready -> mark_source_processed -> processed_ready
 
 `prepare_source_workspace` 负责初始化本次 agent 运行的基础上下文，包括生成 `source_id`、初始化素材目录和 SQLite、检查 `processed` 重复来源、创建 `agent/` 目录、初始化 state/trace。
 
-如果 SQLite 命中同一 `normalized_url` 且 `status = 'processed'`，该 tool 直接推进到 `processed_ready` 并由 runner 返回 `skipped_existing`。这种情况下仍创建或追加 agent trace/state，但不执行后续采集、分类、总结或写入 tools。
+如果 SQLite 命中同一 `normalized_url` 且 `status = 'processed'`，该 tool 直接推进到 `processed_ready`，ToolResult 返回 `status: "skipped_existing"`、`skipped: true`、`skip_reason: "processed_existing"`，并由 runner 返回 `skipped_existing`。这种情况下仍创建或追加 agent trace/state，但不执行后续采集、分类、总结或写入 tools。
 
 ### 6. state 快照和 trace 事件放在素材仓库
 
@@ -143,21 +144,34 @@ note_ready -> mark_source_processed -> processed_ready
 
 ### 8. 有限自动重试
 
-网络/API/下载类错误每个 tool 最多自动重试 1 次，包括：
+网络/API/下载类错误每个 tool 最多自动重试 1 次。公开错误码层面的固定重试白名单为：
 
 ```text
 WEB_FETCH_FAILED
 BILIBILI_METADATA_FAILED
-BILIBILI_SUBTITLE_FAILED
-BILIBILI_AUDIO_DOWNLOAD_FAILED
 LLM_REQUEST_FAILED
 ```
+
+`BILIBILI_TRANSCRIPT_FAILED` 仍作为 Bilibili 文本化失败的公开错误码保留，不拆出新的 `BILIBILI_SUBTITLE_FAILED` 或 `BILIBILI_AUDIO_DOWNLOAD_FAILED`。只有当 `collect_bilibili_text` 能把底层失败分类为字幕下载、音频下载或瞬时网络失败，并在 ToolResult 中返回 `retryable: true` 和 `retry_reason` 时，runner 才可对同一 tool 重试一次；本地解析、空 transcript、Whisper runtime 或非瞬时失败不重试。
 
 输入、配置、schema、本地 runtime、Whisper、Obsidian 和 SQLite 写入错误不自动重试。`LLM_SCHEMA_INVALID` 和 `SUMMARY_SCHEMA_INVALID` 首版也不重试，避免让 agent 做 JSON 修复或重问策略。
 
 ### 9. 使用 `AgentRuntime` 适配层
 
 `km agent-ingest` 依赖项目内 `AgentRuntime` 接口，而不是直接在业务入口到处 import Deep Agents 框架 API。生产实现为 `DeepAgentsRuntime`，测试实现为 `FakeAgentRuntime`。
+
+`agent` optional extra 依赖 PyPI `deepagents>=0.6.11,<0.7`。`DeepAgentsRuntime` 是唯一允许直接导入框架的位置，导入语句固定为 `from deepagents import create_deep_agent`，并把项目内 tool callable、最小上下文、system prompt 和模型引用转换成 Deep Agents 可执行对象。
+
+项目内适配接口保持稳定，至少包含：
+
+```text
+AgentRuntime.run(context, tools) -> AgentRunResult
+AgentRunResult.tool_calls
+AgentRunResult.final_status
+AgentRunResult.error
+```
+
+runner 只依赖这些项目内类型，不读取 Deep Agents 原生返回结构。
 
 这样可以：
 
@@ -202,7 +216,7 @@ agent_orchestration = "deepseek_v4_flash"
 
 ### 14. ToolResult 统一结构
 
-所有 agent tools 返回统一结构，包含 `ok`、`tool`、`status`、`stage_before`、`stage_after`、`skipped`、`skip_reason`、路径字段、`domain`、`title` 或错误字段。ToolResult 不直接构造最终 stdout；最终响应由 runner 根据最终 state 和 tool result 构造。
+所有 agent tools 返回统一结构，包含 `ok`、`tool`、`status`、`stage_before`、`stage_after`、`skipped`、`skip_reason`、路径字段、`domain`、`title` 或错误字段。失败结果包含 `error_code`、`message`、`recoverable`，并可包含 `retryable` 和 `retry_reason`，用于表达同一公开错误码下的细分重试决策。ToolResult 不直接构造最终 stdout；最终响应由 runner 根据最终 state 和 tool result 构造。
 
 ## Risks / Trade-offs
 

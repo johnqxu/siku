@@ -24,7 +24,7 @@
 
 #### Scenario: agent extra 可安装
 - **WHEN** 用户执行 `uv sync --extra agent`
-- **THEN** 项目环境包含 `km agent-ingest` 所需的 Deep Agents runtime 依赖
+- **THEN** 项目环境 MUST 包含 `km agent-ingest` 所需的 PyPI `deepagents>=0.6.11,<0.7` runtime 依赖
 
 #### Scenario: 缺少 runtime 返回错误
 - **WHEN** 用户调用 `km agent-ingest` 但 Deep Agents runtime 不可导入
@@ -56,6 +56,10 @@
 - **WHEN** `km agent-ingest` runner 启动编排
 - **THEN** runner MUST 通过 `AgentRuntime` 接口运行 agent，而不是在业务入口直接绑定 Deep Agents 框架 API
 
+#### Scenario: DeepAgentsRuntime 使用固定导入路径
+- **WHEN** `DeepAgentsRuntime` 初始化真实 Deep Agents runtime
+- **THEN** 生产适配器 MUST 使用 `from deepagents import create_deep_agent` 作为唯一框架导入边界，并把框架对象转换为项目内 `AgentRuntime` 结果类型
+
 #### Scenario: 真实 runtime 缺失集中处理
 - **WHEN** `DeepAgentsRuntime` 无法导入或初始化真实 Deep Agents runtime
 - **THEN** 系统 MUST 返回 `AGENT_RUNTIME_UNAVAILABLE`
@@ -70,6 +74,14 @@
 #### Scenario: 注册受控 tools
 - **WHEN** `km agent-ingest` 初始化 Deep Agents runtime
 - **THEN** 系统 MUST 注册 `route_url`、`prepare_source_workspace`、`collect_bilibili_text`、`collect_web_article_text`、`classify_domain`、`generate_summary`、`write_obsidian_note` 和 `mark_source_processed`
+
+#### Scenario: route_url 不拥有 source_id
+- **WHEN** Deep Agents 调用 `route_url`
+- **THEN** 该 tool MUST 只返回 URL 规范化和内容类型识别结果，包括 `normalized_url` 和 `content_type`，且 MUST NOT 创建或返回 `source_id`、初始化素材目录或访问 SQLite
+
+#### Scenario: prepare_source_workspace 拥有 source_id
+- **WHEN** Deep Agents 调用 `prepare_source_workspace`
+- **THEN** 该 tool MUST 基于 `normalized_url` 生成或查找 `source_id`，初始化素材目录、SQLite 边界、agent state/trace，并处理 processed 重复来源跳过
 
 #### Scenario: Bilibili 内部流程不拆给 agent
 - **WHEN** Deep Agents 调用 `collect_bilibili_text`
@@ -101,6 +113,10 @@
 #### Scenario: 状态机路径完整
 - **WHEN** `km agent-ingest` 从新来源开始执行
 - **THEN** 合法完成路径 MUST 按 `initialized`、`routed`、`workspace_ready`、`text_ready`、`domain_ready`、`summary_ready`、`note_ready`、`processed_ready` 推进
+
+#### Scenario: 重复来源合法跳过转换
+- **WHEN** 当前 stage 为 `routed` 且 `prepare_source_workspace` 命中 SQLite `status = 'processed'` 的重复来源
+- **THEN** guard MUST 允许该 tool 将 stage 直接推进到 `processed_ready`，且 ToolResult MUST 包含 `status: "skipped_existing"`、`skipped: true` 和 `skip_reason: "processed_existing"`
 
 ### Requirement: Agent state 快照
 系统 SHALL 在素材仓库来源目录下维护 `agent/state.json` 作为 agent 运行最新状态快照。
@@ -172,11 +188,11 @@
 
 #### Scenario: processed 命中直接跳过
 - **WHEN** SQLite `sources` 表存在同一 `normalized_url` 且 `status = 'processed'` 的记录
-- **THEN** `km agent-ingest` MUST 返回 `ok: true`、`status: "skipped_existing"`，并包含 `note_path`、`asset_dir`、`source_url`、`orchestrator`、`trace_path` 和 `state_path`
+- **THEN** `km agent-ingest` MUST 返回 `ok: true`、`status: "skipped_existing"`，并包含 `note_path`、`asset_dir`、`source_url`、`orchestrator`、`trace_path` 和 `state_path`，且 state stage MUST 为 `processed_ready`
 
 #### Scenario: 跳过仍记录 trace
 - **WHEN** agent 路径命中重复来源并跳过
-- **THEN** 系统 MUST 写入或追加 agent state/trace，并 MUST NOT 执行后续文本化、分类、总结、Obsidian 写入或 processed 标记 tools
+- **THEN** 系统 MUST 写入或追加 agent state/trace，trace 中 MUST 记录 `skip_reason: "processed_existing"`，并 MUST NOT 执行后续文本化、分类、总结、Obsidian 写入或 processed 标记 tools
 
 #### Scenario: 文件系统缺失不主动修复
 - **WHEN** SQLite `processed` 命中但记录中的文件路径已被用户删除
@@ -190,8 +206,12 @@
 - **THEN** 系统 MAY 自动重试同一 tool 一次，且 trace MUST 记录 `attempt` 递增
 
 #### Scenario: 下载类失败重试一次
-- **WHEN** agent tool 返回 `WEB_FETCH_FAILED`、`BILIBILI_METADATA_FAILED`、`BILIBILI_SUBTITLE_FAILED` 或 `BILIBILI_AUDIO_DOWNLOAD_FAILED`
+- **WHEN** agent tool 返回 `WEB_FETCH_FAILED`、`BILIBILI_METADATA_FAILED`，或返回 `BILIBILI_TRANSCRIPT_FAILED` 且 ToolResult 标记 `retryable: true`
 - **THEN** 系统 MAY 自动重试同一 tool 一次
+
+#### Scenario: Bilibili transcript 非瞬时失败不重试
+- **WHEN** agent tool 返回 `BILIBILI_TRANSCRIPT_FAILED` 且 ToolResult 未标记 `retryable: true`
+- **THEN** 系统 MUST NOT 自动重试该错误，且 MUST 保留公开错误码 `BILIBILI_TRANSCRIPT_FAILED`
 
 #### Scenario: schema 错误不重试
 - **WHEN** agent tool 返回 `LLM_SCHEMA_INVALID`、`SUMMARY_SCHEMA_INVALID` 或 `SUMMARY_INPUT_INVALID`
@@ -214,7 +234,7 @@
 
 #### Scenario: 失败 ToolResult 字段
 - **WHEN** agent tool 失败
-- **THEN** ToolResult MUST 包含 `ok: false`、`tool`、`status: "failed"`、`stage_before`、`stage_after`、`error_code`、`message` 和 `recoverable`
+- **THEN** ToolResult MUST 包含 `ok: false`、`tool`、`status: "failed"`、`stage_before`、`stage_after`、`error_code`、`message` 和 `recoverable`，并 MAY 包含 `retryable` 和 `retry_reason`
 
 #### Scenario: ToolResult 不构造最终 stdout
 - **WHEN** tool 返回 ToolResult
@@ -225,7 +245,7 @@
 
 #### Scenario: agent 可见编排元数据
 - **WHEN** Deep Agents runtime 接收任务上下文
-- **THEN** 上下文 MAY 包含用户 URL、`normalized_url`、`source_id`、当前 state 摘要、`content_type`、产物路径、tool 描述、tool schema、项目内 skills、状态机规则和错误处理规则
+- **THEN** 上下文 MAY 包含用户 URL、`normalized_url`、当前 state 摘要、`content_type`、产物路径、tool 描述、tool schema、项目内 skills、状态机规则和错误处理规则；`source_id` 只有在 `prepare_source_workspace` 成功生成或查到后才可出现在上下文中
 
 #### Scenario: agent 不可见完整来源内容
 - **WHEN** Deep Agents runtime 接收任务上下文
