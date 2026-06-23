@@ -36,6 +36,7 @@ class LlmModelConfig:
 
 @dataclass(frozen=True)
 class LlmTasksConfig:
+    agent_orchestration: str | None = None
     domain_classification: str | None = None
     summary_generation: str | None = None
 
@@ -129,6 +130,12 @@ def parse_llm_config(raw_llm: Any, *, summary: SummaryConfig | None = None) -> t
     if not isinstance(raw_tasks, dict):
         raise config_invalid("配置字段 llm.tasks 必须是 TOML object。")
 
+    agent_orchestration = parse_optional_model_ref(
+        raw_tasks,
+        "agent_orchestration",
+        raw_models,
+        "llm.tasks.agent_orchestration",
+    )
     domain_classification = parse_optional_model_ref(
         raw_tasks,
         "domain_classification",
@@ -142,7 +149,11 @@ def parse_llm_config(raw_llm: Any, *, summary: SummaryConfig | None = None) -> t
         "llm.tasks.summary_generation",
     )
 
-    referenced_models = {ref for ref in (domain_classification, summary_generation) if ref is not None}
+    referenced_models = {
+        ref
+        for ref in (agent_orchestration, domain_classification, summary_generation)
+        if ref is not None
+    }
     if summary is not None and summary.evaluation.enabled:
         for ref in summary.evaluation.candidate_models:
             if ref not in raw_models:
@@ -163,6 +174,7 @@ def parse_llm_config(raw_llm: Any, *, summary: SummaryConfig | None = None) -> t
             models[name] = parse_llm_model_config(name, raw_model)
 
     return models, LlmTasksConfig(
+        agent_orchestration=agent_orchestration,
         domain_classification=domain_classification,
         summary_generation=summary_generation,
     )

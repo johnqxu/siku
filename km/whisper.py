@@ -63,27 +63,31 @@ class OpenVinoWhisperTranscriber:
         model_id = f"openai/whisper-{self.model_size}"
         local_path = Path(self.model_dir).expanduser() / self.model_size
 
-        processor = processor_class.from_pretrained(model_id)
         if self._exists(local_path / "openvino_encoder_model.xml"):
+            processor = self._load_processor(processor_class, model_id, local_path)
             model = model_class.from_pretrained(
                 str(local_path),
                 export=False,
                 compile=True,
                 device=self.device,
+                local_files_only=True,
                 ov_config={"PERFORMANCE_HINT": "LATENCY"},
             )
         else:
+            processor = processor_class.from_pretrained(model_id, local_files_only=True)
             # Phase 1: export PyTorch -> OpenVINO IR without device compilation
             model = model_class.from_pretrained(
                 model_id,
                 export=True,
                 compile=False,
                 device=self.device,
+                local_files_only=True,
                 ov_config={"PERFORMANCE_HINT": "LATENCY"},
             )
             # Save IR immediately — persists even if GPU compilation fails
             self._mkdir(local_path)
             model.save_pretrained(str(local_path))
+            processor.save_pretrained(str(local_path))
 
             # Phase 2: compile for target device
             try:
@@ -107,6 +111,21 @@ class OpenVinoWhisperTranscriber:
         self._model = model
         self._processor = processor
         return model, processor
+
+    def _load_processor(self, processor_class, model_id: str, local_path: Path):
+        try:
+            return processor_class.from_pretrained(str(local_path), local_files_only=True)
+        except Exception:
+            processor = processor_class.from_pretrained(model_id, local_files_only=True)
+            try:
+                self._mkdir(local_path)
+                processor.save_pretrained(str(local_path))
+            except Exception as exc:
+                print(
+                    f"km: Warning: Failed to cache Whisper processor to {local_path}: {exc}",
+                    file=sys.stderr,
+                )
+            return processor
 
     def _load_openvino_stack(self):
         if self._model_class is not None and self._processor_class is not None:

@@ -24,7 +24,7 @@
 
 ## 受控工具
 
-所有副作用必须通过受控 Python tools 完成。领域分类必须调用项目提供的受控分类 tool，由该 tool 读取规范文本、调用配置引用的 LLM client、校验 JSON schema，并写入 `summary/domain.json`。
+所有副作用必须通过受控 Python tools 完成。领域分类必须调用项目提供的 `classify_domain` 受控 tool，由该 tool 读取规范文本、调用配置引用的业务 LLM client、校验 JSON schema，并写入 `summary/domain.json`。agent 只触发 tool，不直接调用模型生成业务内容。
 
 ## 工作边界
 
@@ -49,6 +49,6 @@
 
 `reason` 必须使用中文。`domain_ready` 只表示领域分类完成，不表示完整知识笔记已经完成。
 
-## 本阶段非目标
+## 边界
 
-阶段六不接入 LangChain Deep Agents 运行时，不执行中文总结，不写 Obsidian，不写 SQLite `processed` 记录，也不更新 SQLite `domain` 字段。
+领域分类不执行中文总结，不写 Obsidian，不写 SQLite `processed` 记录，也不更新 SQLite `domain` 字段。

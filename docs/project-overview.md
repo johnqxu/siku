@@ -1,10 +1,10 @@
 # siku 项目探索总览
 
-更新时间：2026-06-17
+更新时间：2026-06-19
 
 ## 文档定位
 
-本文记录 siku 项目从脑暴到阶段九提案形成的整体探索结果。它不是运行手册，也不是某个阶段的 OpenSpec 提案，而是项目级长期总览。
+本文记录 siku 项目从脑暴到阶段九实现后的整体探索结果。它不是运行手册，也不是某个阶段的 OpenSpec 提案，而是项目级长期总览。
 
 - `README.md`：面向使用和当前实现状态，说明如何配置、运行和测试。
 - `docs/project-overview.md`：面向长期理解，说明项目定位、架构边界、阶段路线和现状。
@@ -26,7 +26,7 @@ uv run --env-file .env km ingest <<'JSON'
 JSON
 ```
 
-阶段九提案新增 agent 编排入口：
+阶段九新增 agent 编排入口：
 
 ```bash
 uv run --extra agent --env-file .env km agent-ingest <<'JSON'
@@ -34,7 +34,7 @@ uv run --extra agent --env-file .env km agent-ingest <<'JSON'
 JSON
 ```
 
-当前已实现的稳定入口是 `km ingest`。`km agent-ingest` 已完成 OpenSpec 提案，尚未实施。
+当前已实现的稳定入口是 `km ingest`。`km agent-ingest` 已实现为可选 Deep Agents 编排入口，需要安装 `agent` extra。
 
 ## 核心目标
 
@@ -82,7 +82,7 @@ Hermes 或用户
     -> stdout 返回 processed_ready 或 skipped_existing
 ```
 
-阶段九已确认但尚未实施的 Deep Agents 路径：
+阶段九已实现的 Deep Agents 路径：
 
 ```text
 Hermes
@@ -103,7 +103,7 @@ Deep Agents 只负责决定下一步调用哪个受控 tool。所有副作用必
 Hermes 只调用 CLI。
 
 - 当前调用 `km ingest`。
-- 阶段九以后可调用 `km agent-ingest`。
+- 可调用 `km agent-ingest`。
 - Hermes 不直接调用项目内部 tools。
 - Hermes 不读取项目内部 Deep Agents trace 或推理过程。
 
@@ -118,7 +118,7 @@ Deep Agents 是项目内部的编排器。
 
 ### Skills
 
-项目内 `skills/` 是给未来 Hermes/Deep Agents 使用的版本化指令资产，不是 Codex 的 `.codex/skills/`。
+项目内 `skills/` 是给 Hermes/Deep Agents 使用的版本化指令资产，不是 Codex 的 `.codex/skills/`。
 
 当前项目 skills：
 
@@ -138,7 +138,7 @@ skills/obsidian-write/SKILL.md
 
 Python tools 是真实能力边界。
 
-阶段九提案中的中等粒度 agent tools：
+阶段九中等粒度 agent tools：
 
 ```text
 route_url
@@ -169,7 +169,7 @@ mark_source_processed
 - `[llm.tasks]`：按任务引用模型。
 - `[summary]` 和 `[summary.evaluation]`：控制总结输入截断和双模型评测。
 
-阶段九提案将增加：
+阶段九新增：
 
 ```toml
 [llm.tasks]
@@ -189,10 +189,10 @@ agent_orchestration = "deepseek_v4_flash"
     raw/
     canonical/
     summary/
-    agent/              # 阶段九提案
+    agent/
 ```
 
-阶段九提案中的 agent 状态文件：
+阶段九 agent 状态文件：
 
 ```text
 <asset_dir>/agent/state.json
@@ -408,10 +408,11 @@ Obsidian note 写入：
 
 当前状态：
 
-- OpenSpec 提案已创建：`openspec/changes/add-deep-agents-ingest-orchestration`。
+- `km agent-ingest` 已实现。
+- `agent` optional extra 已加入 `deepagents` 和 `langchain-openai`。
+- 默认自动化测试使用 `FakeAgentRuntime`，不依赖真实 Deep Agents runtime 或远程模型。
 - `openspec validate add-deep-agents-ingest-orchestration` 已通过。
 - `openspec validate --all` 已通过。
-- 代码尚未实施。
 
 阶段九关键设计：
 
@@ -429,7 +430,7 @@ Obsidian note 写入：
 
 ## 当前实现状态
 
-截至 2026-06-17：
+截至 2026-06-19：
 
 已实现：
 
@@ -446,9 +447,6 @@ Obsidian note 写入：
 - 双模型评测输出。
 - Obsidian note 写入。
 - 端到端 `processed_ready`。
-
-已提案、待实施：
-
 - `km agent-ingest`。
 - Deep Agents runtime 集成。
 - AgentRuntime 适配层。
@@ -461,9 +459,8 @@ Obsidian note 写入：
 
 短期：
 
-- 使用 Superpowers TDD 模式实施阶段九提案。
 - 归档已完成的阶段八提案。
-- 实现 `km agent-ingest` 后做 Bilibili 和网页文章端到端验证。
+- 对 `km agent-ingest` 做更多真实 URL 手动验证。
 
 中期：
 

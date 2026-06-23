@@ -75,6 +75,22 @@ def obsidian_write_failed(message: str = "Obsidian 写入失败。") -> KmError:
     return KmError("OBSIDIAN_WRITE_FAILED", message, True, EXIT_RECOVERABLE_FAILURE)
 
 
+def agent_runtime_unavailable(message: str = "Deep Agents runtime 不可用。") -> KmError:
+    return KmError("AGENT_RUNTIME_UNAVAILABLE", message, True, EXIT_RECOVERABLE_FAILURE)
+
+
+def agent_skill_missing(message: str = "Agent 必需 skill 缺失或为空。") -> KmError:
+    return KmError("AGENT_SKILL_MISSING", message, True, EXIT_RECOVERABLE_FAILURE)
+
+
+def agent_invalid_transition(message: str = "Agent tool 状态转换非法。") -> KmError:
+    return KmError("AGENT_INVALID_TRANSITION", message, True, EXIT_RECOVERABLE_FAILURE)
+
+
+def agent_orchestration_failed(message: str = "Agent 编排失败。") -> KmError:
+    return KmError("AGENT_ORCHESTRATION_FAILED", message, True, EXIT_RECOVERABLE_FAILURE)
+
+
 @dataclass(frozen=True)
 class IndexWriteFailed(KmError):
     note_path: str

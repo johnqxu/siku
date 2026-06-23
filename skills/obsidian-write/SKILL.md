@@ -16,6 +16,8 @@
 - `write_obsidian_note(...)`
 - `mark_source_processed(...)`
 
+agent 路径不得直接写 Obsidian、SQLite 或素材仓库，只能调用 `write_obsidian_note` 和 `mark_source_processed` 受控 tools。
+
 ## 禁止行为
 
 - 不得自行写 Obsidian Markdown 文件。
@@ -24,7 +26,6 @@
 - 不得自行写入素材仓库、SQLite 或 Obsidian。
 - 不得把原文、完整 transcript、完整网页正文或原始 HTML 塞进 Obsidian 正文。
 - 不得重新调用 LLM 生成或改写笔记。
-- 不得启用 Deep Agents 运行时端到端编排；当前阶段仍由 Python 确定性 pipeline 调用。
 
 ## 输出边界
 

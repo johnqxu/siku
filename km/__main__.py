@@ -4,6 +4,7 @@ import json
 import sys
 from datetime import datetime
 
+from .agent_runner import AgentIngestRunner
 from .asset_store import AssetStore
 from .bilibili import YtDlpBilibiliDownloader, collect_bilibili_transcript
 from .config import load_config
@@ -183,7 +184,7 @@ def mark_stage_eight_failed(
 
 
 def main() -> int:
-    if len(sys.argv) < 2 or sys.argv[1] != "ingest":
+    if len(sys.argv) < 2 or sys.argv[1] not in {"ingest", "agent-ingest"}:
         error = input_invalid("未知命令。")
         write_json(failure_response(error))
         return error.exit_code
@@ -194,6 +195,25 @@ def main() -> int:
         error = input_invalid("stdin 必须是合法 JSON。")
         write_json(failure_response(error))
         return error.exit_code
+
+    if sys.argv[1] == "agent-ingest":
+        try:
+            config = load_config()
+            runner = AgentIngestRunner(config=config)
+            response = runner.run(payload)
+            write_json(response)
+            if response.get("ok") is True:
+                return 0
+            recoverable = response.get("recoverable")
+            return 2 if recoverable is True else 1
+        except KmError as exc:
+            write_json(failure_response(exc))
+            return exc.exit_code
+        except Exception as exc:
+            print(f"internal error: {exc}", file=sys.stderr)
+            error = internal_error()
+            write_json(failure_response(error))
+            return error.exit_code
 
     try:
         request = IngestRequest.from_payload(payload)

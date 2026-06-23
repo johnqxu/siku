@@ -6,7 +6,7 @@
 
 ## 受控工具
 
-所有 HTTP fetch、parser 选择、网页抓取、正文抽取、素材保存、总结、笔记写入和索引记录都必须通过受控 Python tools 完成。
+所有 HTTP fetch、parser 选择、网页抓取、正文抽取、素材保存、总结、笔记写入和索引记录都必须通过受控 Python tools 完成。agent 路径只允许调用 `collect_web_article_text`，网页 fetch、专用 parser 选择、通用 fallback 和规范文本写入都由该受控 Python tool 内部完成。
 
 ## 工作边界
 
@@ -17,7 +17,4 @@
 - 不得自行写入素材仓库、SQLite 或 Obsidian。
 - 受控 collector 应保存 `raw/page.html` 和 `raw/metadata.json`，并生成用于分类和总结的 `canonical/content.md`。
 - Obsidian 正文只能引用原始链接和素材路径，不嵌入完整原文。
-
-## 本阶段非目标
-
-阶段五不实现 Playwright/browser fallback、登录态/cookie 管理、CSDN 专用 parser、知乎专用 parser，不调用 LLM、不写 Obsidian 笔记，也不接入 Deep Agents 端到端编排。
+- 首版不实现 Playwright/browser fallback、登录态/cookie 管理、CSDN 专用 parser 或知乎专用 parser。

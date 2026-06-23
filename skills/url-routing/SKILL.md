@@ -2,11 +2,11 @@
 
 ## 适用场景
 
-当 Hermes 或未来 Deep Agents 需要判断一个已经规范化的 URL 应进入哪条导入路径时，使用本 skill。
+当 Hermes 通过 `km ingest` 或 `km agent-ingest` 导入知识时，使用本 skill 判断一个 URL 应进入哪条导入路径。两条 CLI 共享相同 URL 分类规则，但编排路径不同：`km ingest` 由确定性 Python pipeline 编排，`km agent-ingest` 由 Deep Agents 在状态机 guard 内调用受控 Python tools。
 
 ## 受控工具
 
-必须通过受控 Python tools 调用 `route_url(normalized_url)` 获取路由结果。路由结果的 `content_type` 只能是：
+必须通过受控 Python tools 调用 `route_url` 获取路由结果。agent 路径下 `route_url` 只返回 `normalized_url` 和 `content_type`，不得创建 `source_id`、初始化素材目录或访问 SQLite。路由结果的 `content_type` 只能是：
 
 - `bilibili_video`
 - `web_article`

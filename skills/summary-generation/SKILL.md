@@ -4,11 +4,10 @@
 
 ## 使用边界
 
-- 必须通过项目提供的受控 Python tools 执行中文总结，当前入口是 `generate_summary(...)`。
-- 不得自行调用 LLM；模型调用、prompt 选择、schema 校验和错误映射都由受控 Python tools 处理。
+- 必须通过项目提供的受控 Python tools 执行中文总结，agent 路径当前入口是 `generate_summary` tool。
+- 不得自行调用 LLM；模型调用、prompt 选择、schema 校验和错误映射都由受控 Python tools 处理。agent 只触发 tool，不直接调用模型生成业务内容。
 - 不得自行写入素材仓库、SQLite 或 Obsidian。
 - 不得写 Obsidian，不得写 SQLite `processed` 记录。
-- 不得启用 Deep Agents 运行时端到端编排；当前阶段仍由 Python 确定性 pipeline 调用。
 - 不做评测评分、排序、manifest、UI 或人工选择记录。
 
 ## 输入前置条件

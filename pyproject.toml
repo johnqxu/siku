@@ -17,6 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+agent = [
+    "deepagents>=0.6.11,<0.7",
+    "langchain-openai>=1.1.4,<2",
+]
 gpu = [
     "librosa>=0.10",
     "optimum[openvino]>=1.14",
