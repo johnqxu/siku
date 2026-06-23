@@ -82,8 +82,10 @@ class ProjectSkillsTests(unittest.TestCase):
         self.assertIn("Hermes", content)
         self.assertIn("完整知识导入流程", content)
         self.assertIn("/home/xu/workspace/siku", content)
-        self.assertIn("uv run --env-file .env km ingest", content)
+        # 默认入口是 km agent-ingest
         self.assertIn("uv run --extra agent --env-file .env km agent-ingest", content)
+        # km ingest 保留为调试入口
+        self.assertIn("uv run --env-file .env km ingest", content)
         self.assertIn("stdin", content)
         self.assertIn("JSON object", content)
         self.assertIn("url", content)
@@ -105,7 +107,7 @@ class ProjectSkillsTests(unittest.TestCase):
         self.assertIn("stdout", content)
         self.assertIn("stderr", content)
 
-    def test_hermes_knowledge_ingest_skill_documents_restrictions_and_migration(self):
+    def test_hermes_knowledge_ingest_skill_documents_restrictions_and_agent_boundaries(self):
         root = Path(__file__).resolve().parents[1]
         content = (root / "skills" / "hermes-knowledge-ingest" / "SKILL.md").read_text(encoding="utf-8")
 

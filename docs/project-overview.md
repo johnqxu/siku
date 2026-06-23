@@ -1,6 +1,6 @@
 # siku 项目探索总览
 
-更新时间：2026-06-19
+更新时间：2026-06-21
 
 ## 文档定位
 
@@ -16,17 +16,9 @@
 
 siku 是一个面向 Hermes agent 的知识导入 CLI。它接收一个 URL，自动识别内容类型，采集或转写内容，生成结构化中文总结，写入 Obsidian，并把原始素材保存在可配置的外部素材仓库中。
 
-它不是 Codex Skill，也不是给人类交互式使用的聊天工具。Hermes 未来应把它当成一个稳定的命令行能力，通过 JSON stdin/stdout 调用。
+它不是一个面向人类交互式使用的聊天工具，而是一个稳定的 CLI 工具，通过 JSON stdin/stdout 与 Hermes agent 集成。
 
-核心调用形态：
-
-```bash
-uv run --env-file .env km ingest <<'JSON'
-{"url":"https://example.com/article","mode":"ingest"}
-JSON
-```
-
-阶段九新增 agent 编排入口：
+核心调用形态（当前默认推荐入口）：
 
 ```bash
 uv run --extra agent --env-file .env km agent-ingest <<'JSON'
@@ -34,7 +26,15 @@ uv run --extra agent --env-file .env km agent-ingest <<'JSON'
 JSON
 ```
 
-当前已实现的稳定入口是 `km ingest`。`km agent-ingest` 已实现为可选 Deep Agents 编排入口，需要安装 `agent` extra。
+确定性调试入口（验证基线）：
+
+```bash
+uv run --env-file .env km ingest <<'JSON'
+{"url":"https://example.com/article","mode":"ingest"}
+JSON
+```
+
+当前 Hermes 默认使用 `km agent-ingest`，由 Deep Agents 编排受控 Python tools 完成知识导入。`km ingest` 保留为确定性 CLI 调试基线。
 
 ## 核心目标
 
@@ -62,9 +62,21 @@ JSON
 
 ## 总体架构
 
-项目采用“稳定 CLI + 受控 Python tools + 可选 Deep Agents 编排”的架构。
+项目采用“受控 CLI + Python tools + 可选确定性备用路径”的架构。
 
-当前阶段八已实施路径：
+当前默认路径（Deep Agents 编排）：
+
+```text
+Hermes 或用户
+  -> km agent-ingest
+    -> Deep Agents runtime
+      -> AgentRuntime adapter
+        -> Python 状态机 guard
+          -> 受控 Python tools
+            -> 下载、解析、转写、LLM、Obsidian、SQLite
+```
+
+确定性调试路径（验证基线）：
 
 ```text
 Hermes 或用户
@@ -82,18 +94,6 @@ Hermes 或用户
     -> stdout 返回 processed_ready 或 skipped_existing
 ```
 
-阶段九已实现的 Deep Agents 路径：
-
-```text
-Hermes
-  -> km agent-ingest
-    -> Deep Agents runtime
-      -> AgentRuntime adapter
-        -> Python 状态机 guard
-          -> 受控 Python tools
-            -> 下载、解析、转写、LLM、Obsidian、SQLite
-```
-
 Deep Agents 只负责决定下一步调用哪个受控 tool。所有副作用必须由 Python tools 完成。状态机 guard 是安全边界，prompt 和 skill 不是安全边界。
 
 ## Hermes、Deep Agents、Skills 和 Tools 边界
@@ -102,8 +102,8 @@ Deep Agents 只负责决定下一步调用哪个受控 tool。所有副作用必
 
 Hermes 只调用 CLI。
 
-- 当前调用 `km ingest`。
-- 可调用 `km agent-ingest`。
+- 当前默认调用 `km agent-ingest`。
+- 可调用 `km ingest` 作为确定性调试/验证基线。
 - Hermes 不直接调用项目内部 tools。
 - Hermes 不读取项目内部 Deep Agents trace 或推理过程。
 
@@ -408,7 +408,7 @@ Obsidian note 写入：
 
 当前状态：
 
-- `km agent-ingest` 已实现。
+- `km agent-ingest` 已实现，且已切换为 Hermes 知识导入 skill 的默认入口。
 - `agent` optional extra 已加入 `deepagents` 和 `langchain-openai`。
 - 默认自动化测试使用 `FakeAgentRuntime`，不依赖真实 Deep Agents runtime 或远程模型。
 - `openspec validate add-deep-agents-ingest-orchestration` 已通过。
@@ -430,7 +430,7 @@ Obsidian note 写入：
 
 ## 当前实现状态
 
-截至 2026-06-19：
+截至 2026-06-21：
 
 已实现：
 
@@ -471,6 +471,5 @@ Obsidian note 写入：
 
 长期：
 
-- 让 Hermes 通过 `km agent-ingest` 稳定调用知识导入能力。
 - 将 skills 演进为跨 agent 可复用的知识导入指令资产。
 - 在不破坏 CLI 契约的前提下持续扩展内容解析、总结模板和知识管理策略。

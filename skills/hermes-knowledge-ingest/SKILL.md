@@ -6,20 +6,29 @@
 
 本 skill 是 Hermes 的高层入口，不是内部 Deep Agents 子 skill。Hermes 不直接编排项目内部流水线工具，也不直接写素材仓库、SQLite 或 Obsidian。
 
-## 当前调用命令
+当前默认通过项目内 Deep Agents 编排受控 Python tools 完成全流程。
 
-默认稳定入口是确定性 `km ingest`：
+## 当前默认调用命令
 
-```bash
-cd /home/xu/workspace/siku
-uv run --env-file .env km ingest
-```
-
-需要由项目内部 Deep Agents 托管编排时，显式使用 agent 入口：
+推荐入口是 `km agent-ingest`，由项目内 Deep Agents 编排受控 Python tools：
 
 ```bash
 cd /home/xu/workspace/siku
 uv run --extra agent --env-file .env km agent-ingest
+```
+
+无字幕 Bilibili 且需要本地 Whisper GPU 转写时，同时启用 `agent` 和 `gpu`：
+
+```bash
+cd /home/xu/workspace/siku
+uv run --extra agent --extra gpu --env-file .env km agent-ingest
+```
+
+需要确定性直接编排（调试、验证基线或排查 agent 路径问题）时，使用 `km ingest`：
+
+```bash
+cd /home/xu/workspace/siku
+uv run --env-file .env km ingest
 ```
 
 Hermes 通过 stdin 传入单个 JSON object：
@@ -38,6 +47,9 @@ Hermes 通过 stdin 传入单个 JSON object：
 - 该目录下存在可用的 `.env`。
 - `.env` 提供 `KM_CONFIG`。
 - `DEEPSEEK_API_KEY` 已通过 `.env` 或继承环境配置。
+- 如需调用 `km agent-ingest`，配置必须包含 `[llm.tasks] agent_orchestration` 模型引用。
+- 如需调用 `km agent-ingest`，确认已安装 `agent` extra：`uv sync --extra agent`。
+- 如需调用 `km agent-ingest` 且处理无字幕 Bilibili 视频，同时安装 `gpu` extra：`uv sync --extra agent --extra gpu`。
 
 本 skill 不重复实现完整 CLI 校验。Obsidian 路径、素材仓库路径、URL 合法性、Whisper 运行时、下载器、Deep Agents runtime 和 SQLite 错误仍由 CLI 负责，并通过结构化 stdout JSON 返回。
 
@@ -84,10 +96,8 @@ Hermes 不得自行访问网络下载内容，不得自行调用 LLM，不得自
 
 ## agent 入口边界
 
-选择 `km agent-ingest` 必须是显式决定。本 skill 不得从 `km agent-ingest` 自动回退到 `km ingest`，因为自动回退会掩盖 Deep Agents 编排失败。
+`km agent-ingest` 是当前默认入口。`km ingest` 作为确定性调试/验证基线保留，但不应在 Hermes 正常工作流中使用。
 
-无字幕 Bilibili 且需要本地 Whisper GPU 转写时，Hermes 应使用：
+本 skill 不得从 `km agent-ingest` 自动回退到 `km ingest`，因为自动回退会掩盖 Deep Agents 编排失败。
 
-```bash
-uv run --extra agent --extra gpu --env-file .env km agent-ingest
-```
+Hermes 选择 `km agent-ingest` 或 `km ingest` 必须是显式决定。使用 `km agent-ingest` 时，如果配置缺少 `agent` extra 或 `agent_orchestration` 模型引用，CLI 会返回对应公开错误。

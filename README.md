@@ -2,7 +2,7 @@
 
 siku 是一个面向 Hermes agent 的知识导入 CLI。它接收单个 URL，采集或转写正文，生成结构化中文总结，写入 Obsidian，并把原始素材、中间产物和去重状态保存在 Obsidian vault 外部。
 
-当前稳定入口是 `km ingest`。项目也提供可选的 `km agent-ingest`，用于在项目内部启动 Deep Agents 编排受控 Python tools。输入和输出都使用 JSON，方便 Hermes 或其他上层调度器做重试、错误处理和状态跟踪。
+当前默认入口是 `km agent-ingest`，由项目内部 Deep Agents 编排受控 Python tools，提供 agent 编排、state/trace 可观测性和自动产物复用。同时也保留 `km ingest` 作为确定性调试/验证基线。输入和输出都使用 JSON，方便 Hermes 或其他上层调度器做重试、错误处理和状态跟踪。
 
 ## 当前能力
 
@@ -36,7 +36,15 @@ KM_CONFIG=/home/xu/.config/siku/config.toml
 
 创建 `KM_CONFIG` 指向的 TOML 配置文件。完整示例见下方“配置”。
 
-运行一次网页导入：
+运行一次网页导入（推荐 — Deep Agents 编排）：
+
+```bash
+uv run --extra agent --env-file .env km agent-ingest <<'JSON'
+{"url":"https://example.com/article","mode":"ingest"}
+JSON
+```
+
+运行一次网页导入（确定性调试）：
 
 ```bash
 uv run --env-file .env km ingest <<'JSON'
@@ -360,13 +368,14 @@ Obsidian note 只包含总结、原始链接和素材路径引用，不嵌入完
 
 ```bash
 uv sync
-uv sync --extra gpu
 uv sync --extra agent
+uv sync --extra gpu
+uv sync --extra agent --extra gpu
 uv run python -m unittest discover -s tests -v
-uv run --env-file .env km ingest <<'JSON'
+uv run --extra agent --env-file .env km agent-ingest <<'JSON'
 {"url":"https://example.com/article","mode":"ingest"}
 JSON
-uv run --extra agent --env-file .env km agent-ingest <<'JSON'
+uv run --env-file .env km ingest <<'JSON'
 {"url":"https://example.com/article","mode":"ingest"}
 JSON
 ```
