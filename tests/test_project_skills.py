@@ -79,13 +79,23 @@ class ProjectSkillsTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         content = (root / "skills" / "hermes-knowledge-ingest" / "SKILL.md").read_text(encoding="utf-8")
 
+        self.assertTrue(content.startswith("---\n"))
+        frontmatter = content.split("---\n", 2)[1]
+        self.assertIn("name: hermes-knowledge-ingest", frontmatter)
+        self.assertIn("description:", frontmatter)
+        self.assertIn("加入到知识库", frontmatter)
+        self.assertIn("保存到知识库", frontmatter)
+        self.assertIn("Obsidian", frontmatter)
+        self.assertIn("URL", frontmatter)
+        self.assertLessEqual(len(frontmatter), 1024)
+
         self.assertIn("Hermes", content)
         self.assertIn("完整知识导入流程", content)
         self.assertIn("/home/xu/workspace/siku", content)
         # 默认入口是 km agent-ingest
         self.assertIn("uv run --extra agent --env-file .env km agent-ingest", content)
-        # km ingest 保留为调试入口
-        self.assertIn("uv run --env-file .env km ingest", content)
+        self.assertNotIn("uv run --env-file .env km ingest", content)
+        self.assertNotIn("km ingest 保留", content)
         self.assertIn("stdin", content)
         self.assertIn("JSON object", content)
         self.assertIn("url", content)
@@ -123,7 +133,25 @@ class ProjectSkillsTests(unittest.TestCase):
         self.assertIn("不主动读取", content)
         self.assertIn("uv run --extra agent --env-file .env km agent-ingest", content)
         self.assertIn("uv run --extra agent --extra gpu --env-file .env km agent-ingest", content)
-        self.assertIn("自动回退", content)
+        self.assertIn("唯一公开导入入口", content)
+        self.assertIn("不得自动回退", content)
+        self.assertNotIn("选择 `km agent-ingest` 或 `km ingest`", content)
+
+    def test_hermes_knowledge_ingest_skill_prevents_memory_false_success(self):
+        root = Path(__file__).resolve().parents[1]
+        content = (root / "skills" / "hermes-knowledge-ingest" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("加入到知识库", content)
+        self.assertIn("https://b23.tv/wPRipfZ", content)
+        self.assertIn("必须调用 `km agent-ingest`", content)
+        self.assertIn("不得用 `web_extract`", content)
+        self.assertIn("不得用 `memory`", content)
+        self.assertIn("Hermes memory 不是 Obsidian 知识库", content)
+        self.assertIn("没有 `km agent-ingest` stdout JSON", content)
+        self.assertIn("不得回复“已加入知识库”", content)
+        self.assertIn('`ok: true`', content)
+        self.assertIn('`status: "processed_ready"`', content)
+        self.assertIn('`status: "skipped_existing"`', content)
 
 
 if __name__ == "__main__":

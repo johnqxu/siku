@@ -2,7 +2,7 @@
 
 ## 适用场景
 
-当 Hermes 通过 `km ingest` 或 `km agent-ingest` 导入知识时，使用本 skill 判断一个 URL 应进入哪条导入路径。两条 CLI 共享相同 URL 分类规则，但编排路径不同：`km ingest` 由确定性 Python pipeline 编排，`km agent-ingest` 由 Deep Agents 在状态机 guard 内调用受控 Python tools。
+当 Hermes 通过 `km agent-ingest` 导入知识时，使用本 skill 判断一个 URL 应进入哪条导入路径。公开导入入口只有 `km agent-ingest`；路由判断由该入口内部的状态机 guard 调用受控 Python tools 完成。
 
 ## 受控工具
 
